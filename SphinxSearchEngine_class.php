@@ -28,6 +28,7 @@ class SphinxSearchEngine extends SearchEngine
         return false;
     }
 
+    // Main search function
     function searchText($term)
     {
         global $wgSphinxSearch_weights;
@@ -40,8 +41,9 @@ class SphinxSearchEngine extends SearchEngine
         $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
         if ($this->namespaces)
             $query .= ' AND page_namespace IN ('.implode(',', $this->namespaces).')';
-        if ($this->categories)
-            $query .= ' AND category IN ('.implode(',', $this->categories).')';
+        // Uncomment when Sphinx will support MVAs in RT indexes:
+        //if ($this->categories)
+        //    $query .= ' AND category IN ('.implode(',', $this->categories).')';
         if ($this->orderby)
             $query .= ' ORDER BY '.$this->orderby;
         $query .= ' LIMIT '.$this->offset.', '.$this->limit;
@@ -65,15 +67,15 @@ class SphinxSearchEngine extends SearchEngine
         return $res;
     }
 
+    // Filter $text - just a stub
     function filter($text)
     {
         return $text;
     }
 
+    // Updates an index entry
     function update($id, $title, $text)
     {
-        $title = Title::newFromId($id);
-        $title->getNamespace();
         if (!$this->sphinx->query('REPLACE INTO '.$this->index.
                 ' (id, page_namespace, page_title, old_text) VALUES (?, ?, ?, ?)',
                 array($id, $title->getNamespace(), $title->getText(), $text)
@@ -83,12 +85,78 @@ class SphinxSearchEngine extends SearchEngine
             wfDebug("[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n");
         }
     }
+
+    // Deletes an index entry
+    function delete($id)
+    {
+        if (!$this->sphinx->query('DELETE FROM '.$this->index.' WHERE id=?', array($id)))
+        {
+            // Log the error
+            wfDebug("[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n");
+        }
+    }
+
+    // Fills the Sphinx index with all current texts from the DB
+    function build_index()
+    {
+        printf("Filling the Sphinx full-text index...\n");
+        $ids = array();
+        $res = $this->db->select(
+            array('page', 'revision', 'text'),
+            'page_id, page_namespace, page_title, old_text',
+            array('rev_id=page_latest', 'old_id=rev_text_id'),
+            __METHOD__
+        );
+        $cur = array();
+        $total = $res->numRows()-1;
+        foreach ($res as $i => $row)
+        {
+            if (count($cur) < 1024 && $i < $total)
+            {
+                $cur[] = $row->page_id;
+                $cur[] = $row->page_namespace;
+                $cur[] = str_replace('_', ' ', $row->page_title);
+                $cur[] = $row->old_text;
+            }
+            else
+            {
+                $q = 'REPLACE INTO '.$this->index.
+                    ' (id, page_namespace, page_title, old_text) VALUES '.
+                    substr(str_repeat(', (?, ?, ?, ?)', count($cur)/4), 2);
+                if (!$this->sphinx->query($q, $cur))
+                {
+                    // Log the error
+                    print("[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n");
+                }
+                $cur = array();
+            }
+        }
+    }
+
+    // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
+    static function LoadExtensionSchemaUpdates()
+    {
+        $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
+        $rows = $eng->sphinx->select('select `id` from '.$eng->index.' limit 1');
+        if (!$rows && $eng->sphinx->dbh)
+            $eng->build_index();
+        return true;
+    }
+
+    // This hook is called before deleting article
+    static function ArticleDelete($article, &$user, &$reason, &$error)
+    {
+        $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
+        $eng->delete($article->getId());
+        return true;
+    }
 }
 
 class SphinxSearchResultSet extends SearchResultSet
 {
     function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index)
     {
+        wfLoadExtensionMessages('SphinxSearchEngine');
         $this->sphinxResult = $rows;
         $this->sphinx = $sphinx;
         $this->meta = $sphinx->select('SHOW META', 0);
@@ -274,6 +342,8 @@ class SphinxQLClient
     // Interpolate $args into '?' inside $query and run it
     function query($query, $args = array())
     {
+        if (!$this->dbh)
+            return NULL;
         $pos = array();
         $p = -1;
         while (($p = strpos($query, '?', $p+1)) !== false)

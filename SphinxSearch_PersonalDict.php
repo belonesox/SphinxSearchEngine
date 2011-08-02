@@ -3,14 +3,11 @@
 /**
  * Pluggable Sphinx search engine for MediaWiki 1.16+ and Sphinx 0.99+ (real-time indexing)
  * http://wiki.4intra.net/SphinxSearchEngine
- * Copied from SphinxSearch MW extension
+ * (c) 2011, Vitaliy Filippov
+ * License: GPL 3.0 or later (see http://www.fsf.org/licenses/gpl.html)
  *
+ * This file is based @ SphinxSearch extension by Paul Grinberg and Svemir Brkic
  * http://www.mediawiki.org/wiki/Extension:SphinxSearch
- *
- * Developed by Paul Grinberg and Svemir Brkic
- * Adjusted by Vitaliy Filippov and Stas Fomin
- *
- * Released under GNU General Public License (see http://www.fsf.org/licenses/gpl.html)
  */
 
 class SphinxSearchPersonalDict extends SpecialPage
@@ -18,7 +15,7 @@ class SphinxSearchPersonalDict extends SpecialPage
     function SphinxSearchPersonalDict()
     {
         SpecialPage::SpecialPage('SphinxSearchPersonalDict', 'delete');
-        wfLoadExtensionMessages('SphinxSearch');
+        wfLoadExtensionMessages('SphinxSearchEngine');
         return true;
     }
 

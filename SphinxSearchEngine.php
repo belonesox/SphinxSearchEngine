@@ -23,13 +23,17 @@ $wgExtensionCredits['specialpage'][] = array(
 );
 
 $dir = dirname(__FILE__);
-$wgExtensionMessagesFiles['SphinxSearch'] = $dir . '/SphinxSearch.i18n.php';
+$wgExtensionMessagesFiles['SphinxSearchEngine'] = $dir . '/SphinxSearchEngine.i18n.php';
 $wgAutoloadClasses += array(
     'SphinxSearchEngine'        => "$dir/SphinxSearchEngine_class.php",
     'SphinxSearch_spell'        => "$dir/SphinxSearch_spell.php",
     'SphinxSearch'              => "$dir/SphinxSearch_body.php",
     'SphinxSearchPersonalDict'  => "$dir/SphinxSearch_PersonalDict.php",
 );
+// override core SearchUpdate class
+$wgAutoloadLocalClasses['SearchUpdate'] = "$dir/SphinxSearchUpdate.php";
+$wgHooks['LoadExtensionSchemaUpdates'][] = 'SphinxSearchEngine::LoadExtensionSchemaUpdates';
+$wgHooks['ArticleDelete'][] = 'SphinxSearchEngine::ArticleDelete';
 $wgSearchType = 'SphinxSearchEngine';
 
 ##########################################################
