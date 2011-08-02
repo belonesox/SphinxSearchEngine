@@ -99,7 +99,7 @@ class SphinxSearchEngine extends SearchEngine
     // Fills the Sphinx index with all current texts from the DB
     function build_index()
     {
-        printf("Filling the Sphinx full-text index...\n");
+        print("Filling the Sphinx full-text index...\n");
         $ids = array();
         $res = $this->db->select(
             array('page', 'revision', 'text'),
