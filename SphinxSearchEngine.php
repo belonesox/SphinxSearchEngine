@@ -41,15 +41,15 @@ $wgSearchType = 'SphinxSearchEngine';
 ##########################################################
 
 # Host and port on which searchd is listening for SphinxQL
-if (!$wgSphinxSearch_host)
-    $wgSphinxSearch_host = 'localhost';
-if (!$wgSphinxSearch_port)
-    $wgSphinxSearch_port = 9306;
-if (!$wgSphinxSearch_index)
-    $wgSphinxSearch_index = 'wiki';
+if (!$wgSphinxQL_host)
+    $wgSphinxQL_host = '';
+if (!$wgSphinxQL_port)
+    $wgSphinxQL_port = '/var/run/searchd.sock';
+if (!$wgSphinxQL_index)
+    $wgSphinxQL_index = 'wiki';
 
 # Options for building text snippets
-$wgSphinxSearchExcerptsOptions = array(
+$wgSphinxQL_ExcerptsOptions = array(
     'before_match'    => "<span style='color:red'>",
     'after_match'     => "</span>",
     'chunk_separator' => " ... ",
@@ -58,7 +58,7 @@ $wgSphinxSearchExcerptsOptions = array(
 );
 
 # Weights of individual indexed columns. This gives page titles extra weight
-$wgSphinxSearch_weights = array('old_text' => 1, 'page_title' => 100);
+$wgSphinxQL_weights = array('old_text' => 1, 'page_title' => 100);
 
 ##########################################################
 # Suggest Mode configuration options

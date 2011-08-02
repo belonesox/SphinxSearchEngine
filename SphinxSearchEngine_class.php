@@ -11,11 +11,11 @@ class SphinxSearchEngine extends SearchEngine
 {
     function __construct($db)
     {
-        global $wgSphinxSearch_host, $wgSphinxSearch_port, $wgSphinxSearch_index;
+        global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index;
         $this->db = $db;
         $this->sphinx = new SphinxQLClient();
-        $this->index = $wgSphinxSearch_index;
-        $this->sphinx->connect($wgSphinxSearch_host.':'.$wgSphinxSearch_port);
+        $this->index = $wgSphinxQL_index;
+        $this->sphinx->connect($wgSphinxQL_host.':'.$wgSphinxQL_port);
     }
 
     function searchTitle($term)
@@ -31,7 +31,7 @@ class SphinxSearchEngine extends SearchEngine
     // Main search function
     function searchText($term)
     {
-        global $wgSphinxSearch_weights;
+        global $wgSphinxQL_weights;
         $found = 0;
 
         // don't do anything for blank searches
@@ -47,9 +47,9 @@ class SphinxSearchEngine extends SearchEngine
         if ($this->orderby)
             $query .= ' ORDER BY '.$this->orderby;
         $query .= ' LIMIT '.$this->offset.', '.$this->limit;
-        if ($wgSphinxSearch_weights)
+        if ($wgSphinxQL_weights)
         {
-            $ws = $wgSphinxSearch_weights;
+            $ws = $wgSphinxQL_weights;
             foreach ($ws as $k => &$w)
                 $w = "$k=".intval($w);
             $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
@@ -108,24 +108,21 @@ class SphinxSearchEngine extends SearchEngine
             __METHOD__
         );
         $cur = array();
-        $total = $res->numRows()-1;
+        $total = $res->numRows();
         foreach ($res as $i => $row)
         {
-            if (count($cur) < 1024 && $i < $total)
-            {
-                $cur[] = $row->page_id;
-                $cur[] = $row->page_namespace;
-                $cur[] = str_replace('_', ' ', $row->page_title);
-                $cur[] = $row->old_text;
-            }
-            else
+            $cur[] = $row->page_id;
+            $cur[] = $row->page_namespace;
+            $cur[] = str_replace('_', ' ', $row->page_title);
+            $cur[] = $row->old_text;
+            if (count($cur) >= 1024 || $i >= $total)
             {
                 $q = 'REPLACE INTO '.$this->index.
                     ' (id, page_namespace, page_title, old_text) VALUES '.
                     substr(str_repeat(', (?, ?, ?, ?)', count($cur)/4), 2);
                 if (!$this->sphinx->query($q, $cur))
                 {
-                    // Log the error
+                    // Print error
                     print("[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n");
                 }
                 $cur = array();
@@ -136,8 +133,16 @@ class SphinxSearchEngine extends SearchEngine
     // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
     static function LoadExtensionSchemaUpdates()
     {
+        global $wgUpdates, $wgDBtype;
+        $wgUpdates[$wgDBtype][] = array('SphinxSearchEngine::init_index');
+        return true;
+    }
+
+    // Initialise index, if not yet
+    static function init_index()
+    {
         $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
-        $rows = $eng->sphinx->select('select `id` from '.$eng->index.' limit 1');
+        $rows = $eng->sphinx->select('select * from '.$eng->index.' limit 1');
         if (!$rows && $eng->sphinx->dbh)
             $eng->build_index();
         return true;
@@ -270,13 +275,13 @@ class SphinxSearchResultSet extends SearchResultSet
 
     function next()
     {
-        global $wgSphinxSearchExcerptsOptions;
+        global $wgSphinxQL_ExcerptsOptions;
         if ($this->position < $this->numRows())
         {
             $doc = $this->ids[$this->position++];
             $snip_query = 'CALL SNIPPETS(?, ?, ?';
             $snip_bind = array($this->dbTexts[$doc], $this->index, $this->term);
-            foreach ($wgSphinxSearchExcerptsOptions as $k => $v)
+            foreach ($wgSphinxQL_ExcerptsOptions as $k => $v)
             {
                 $snip_query .= ", ? AS $k";
                 $snip_bind[] = $v;
