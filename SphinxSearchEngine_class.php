@@ -99,7 +99,7 @@ class SphinxSearchEngine extends SearchEngine
     // Fills the Sphinx index with all current texts from the DB
     function build_index()
     {
-        print("Filling the Sphinx full-text index...\n");
+        fwrite(STDERR, "Filling the Sphinx full-text index...\n");
         $ids = array();
         $res = $this->db->select(
             array('page', 'revision', 'text'),
@@ -117,6 +117,8 @@ class SphinxSearchEngine extends SearchEngine
             $cur[] = $row->old_text;
             if (count($cur) >= 1024 || $i >= $total)
             {
+                fwrite(STDERR, "\r$i / $total...");
+                fflush(STDERR);
                 $q = 'REPLACE INTO '.$this->index.
                     ' (id, page_namespace, page_title, old_text) VALUES '.
                     substr(str_repeat(', (?, ?, ?, ?)', count($cur)/4), 2);
@@ -128,6 +130,7 @@ class SphinxSearchEngine extends SearchEngine
                 $cur = array();
             }
         }
+        fwrite(STDERR, "\n");
     }
 
     // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
@@ -295,7 +298,7 @@ class SphinxSearchResultSet extends SearchResultSet
                 // add excerpt to output, remove some wiki markup and break apart long strings
                 $entry = $entry[0];
                 $entry = preg_replace('/([\[\]\{\}\*\#\|\!]+|==+)/', ' ', strip_tags($entry, '<span><br>'));
-                $entry = join('<br />', preg_split('/(*UTF8)(\S{60})/', $entry, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
+                $entry = join('<br />', preg_split('/(\P{Z}{60})/u', $entry, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
                 $entry = "<div style='margin: 0 0 0.2em 1em;'>$entry</div>\n";
             }
             $excerpts = implode("", $excerpts);
@@ -349,17 +352,26 @@ class SphinxQLClient
     {
         if (!$this->dbh)
             return NULL;
-        $pos = array();
-        $p = -1;
-        while (($p = strpos($query, '?', $p+1)) !== false)
-            $pos[] = $p;
-        for ($i = count($pos)-1; $i >= 0; $i--)
+        preg_match_all('/\\?/', $query, $pos, PREG_PATTERN_ORDER|PREG_OFFSET_CAPTURE);
+        $pos = $pos[0];
+        if ($pos)
         {
-            $a = $args[$i];
-            if (intval($a).'' !== "$a")
-                $a = "'" . mysql_real_escape_string($a, $this->dbh) . "'";
-            $query = substr($query, 0, $pos[$i]) . $a . substr($query, $pos[$i]+1);
+            $nq = substr($query, 0, $pos[0][1]);
+            $j = 0;
+            $n = count($pos);
+            $pos[$n] = array('', strlen($query));
+            for ($i = 0; $i < $n; $i++)
+            {
+                if (is_int($args[$j]))
+                    $nq .= $args[$j];
+                else
+                    $nq .= "'".mysql_escape_string($args[$j])."'";
+                $j++;
+                $nq .= substr($query, $pos[$i][1]+1, $pos[$i+1][1]-$pos[$i][1]-1);
+            }
+            $query = $nq;
         }
+        $this->lastq = $query;
         return mysql_query($query, $this->dbh);
     }
     // Run the query with $args and return rows in the array with column $key as a key
@@ -383,7 +395,7 @@ class SphinxQLClient
     function error()
     {
         if ($this->dbh && mysql_errno($this->dbh))
-            return mysql_errno($this->dbh).': '.mysql_error($this->dbh);
+            return mysql_errno($this->dbh).': '.mysql_error($this->dbh)."\nFailed query was:\n".$this->lastq;
         return NULL;
     }
 }
