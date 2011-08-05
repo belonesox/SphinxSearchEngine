@@ -107,9 +107,14 @@ class SphinxSearchEngine extends SearchEngine
         $res = $this->db->select(
             array('page', 'revision', 'text', 'categorylinks'),
             'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(cl_to SEPARATOR \',\') category',
-            array('rev_id=page_latest', 'old_id=rev_text_id', 'cl_from=page_id'),
+            array('1'),
             __METHOD__,
-            array('GROUP BY' => 'page_id')
+            array('GROUP BY' => 'page_id'),
+            array(
+                'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
+                'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
+                'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
+            )
         );
         $cur = array();
         $total = $res->numRows();
