@@ -58,7 +58,7 @@ $wgSphinxQL_ExcerptsOptions = array(
 );
 
 # Weights of individual indexed columns. This gives page titles extra weight
-$wgSphinxQL_weights = array('old_text' => 1, 'page_title' => 100);
+$wgSphinxQL_weights = array('category' => 2, 'text' => 1, 'title' => 100);
 
 ##########################################################
 # Suggest Mode configuration options
