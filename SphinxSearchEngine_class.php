@@ -40,10 +40,7 @@ class SphinxSearchEngine extends SearchEngine
 
         $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
         if ($this->namespaces)
-            $query .= ' AND page_namespace IN ('.implode(',', $this->namespaces).')';
-        // Uncomment when Sphinx will support MVAs in RT indexes:
-        //if ($this->categories)
-        //    $query .= ' AND category IN ('.implode(',', $this->categories).')';
+            $query .= ' AND namespace IN ('.implode(',', $this->namespaces).')';
         if ($this->orderby)
             $query .= ' ORDER BY '.$this->orderby;
         $query .= ' LIMIT '.$this->offset.', '.$this->limit;
@@ -76,9 +73,15 @@ class SphinxSearchEngine extends SearchEngine
     // Updates an index entry
     function update($id, $title, $text)
     {
+        $dbr = wfGetDB(DB_SLAVE);
+        $res = $dbr->select('categorylinks', 'cl_to', array('cl_from' => $id), __METHOD__);
+        $cat = array();
+        foreach ($res as $row)
+            $cat[] = $row->cl_to;
+        $cat = str_replace('_', ' ', implode(', ', $cat));
         if (!$this->sphinx->query('REPLACE INTO '.$this->index.
-                ' (id, page_namespace, page_title, old_text) VALUES (?, ?, ?, ?)',
-                array($id, $title->getNamespace(), $title->getText(), $text)
+                ' (id, namespace, title, text, category) VALUES (?, ?, ?, ?, ?)',
+                array($id, $title->getNamespace(), $title->getText(), $text, $cat)
             ))
         {
             // Log the error
@@ -102,10 +105,11 @@ class SphinxSearchEngine extends SearchEngine
         fwrite(STDERR, "Filling the Sphinx full-text index...\n");
         $ids = array();
         $res = $this->db->select(
-            array('page', 'revision', 'text'),
-            'page_id, page_namespace, page_title, old_text',
-            array('rev_id=page_latest', 'old_id=rev_text_id'),
-            __METHOD__
+            array('page', 'revision', 'text', 'categorylinks'),
+            'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(cl_to SEPARATOR \',\') category',
+            array('rev_id=page_latest', 'old_id=rev_text_id', 'cl_from=page_id'),
+            __METHOD__,
+            array('GROUP BY' => 'page_id')
         );
         $cur = array();
         $total = $res->numRows();
@@ -115,13 +119,14 @@ class SphinxSearchEngine extends SearchEngine
             $cur[] = $row->page_namespace;
             $cur[] = str_replace('_', ' ', $row->page_title);
             $cur[] = $row->old_text;
-            if (count($cur) >= 1024 || $i >= $total)
+            $cur[] = str_replace('_', ' ', $row->category);
+            if (count($cur) >= 256*5 || $i >= $total)
             {
                 fwrite(STDERR, "\r$i / $total...");
                 fflush(STDERR);
                 $q = 'REPLACE INTO '.$this->index.
-                    ' (id, page_namespace, page_title, old_text) VALUES '.
-                    substr(str_repeat(', (?, ?, ?, ?)', count($cur)/4), 2);
+                    ' (id, namespace, title, text, category) VALUES '.
+                    substr(str_repeat(', (?, ?, ?, ?, ?)', count($cur)/5), 2);
                 if (!$this->sphinx->query($q, $cur))
                 {
                     // Print error
@@ -131,6 +136,27 @@ class SphinxSearchEngine extends SearchEngine
             }
         }
         fwrite(STDERR, "\n");
+    }
+
+    // For maintenance: remove pages which are not in the DB any more, from the index
+    function purge_deleted()
+    {
+        $lastid = 0;
+        do
+        {
+            $ids = $this->sphinx->select('SELECT id FROM '.$eng->index.' WHERE id>'.$lastid.' ORDER BY id');
+            if (!$ids)
+                break;
+            foreach ($ids as &$id)
+                $id = $id[0];
+            $lastid = $ids[count($ids)-1];
+            $res = $this->db->select('page', 'page_id', array('page_id' => $ids), __METHOD__);
+            $deleted = array_flip($ids);
+            foreach ($res as $row)
+                unset($deleted[$row->page_id]);
+            if ($deleted)
+                $this->sphinx->query('DELETE FROM '.$eng->index.' WHERE id IN ('.implode(',', $deleted).')');
+        } while (1);
     }
 
     // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
