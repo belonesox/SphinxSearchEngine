@@ -41,11 +41,11 @@ $wgSearchType = 'SphinxSearchEngine';
 ##########################################################
 
 # Host and port on which searchd is listening for SphinxQL
-if (!$wgSphinxQL_host)
+if (!isset($wgSphinxQL_host))
     $wgSphinxQL_host = '';
-if (!$wgSphinxQL_port)
+if (!isset($wgSphinxQL_port))
     $wgSphinxQL_port = '/var/run/searchd.sock';
-if (!$wgSphinxQL_index)
+if (!isset($wgSphinxQL_index))
     $wgSphinxQL_index = 'wiki';
 
 # Options for building text snippets
@@ -69,7 +69,7 @@ $wgSphinxQL_weights = array('category' => 2, 'text' => 1, 'title' => 100);
 ##########################################################
 
 # Should the suggestion mode be enabled?
-if (!is_bool($wgSphinxSuggestMode))
+if (!isset($wgSphinxSuggestMode))
     $wgSphinxSuggestMode = true;
 
 # Path to where aspell has location and language data files. Leave commented out if unsure
@@ -85,7 +85,7 @@ if (!is_bool($wgSphinxSuggestMode))
 # End of Suggest Mode configuration options
 ##########################################################
 
-if ($wgSphinxSuggestMode && $wgSphinxSearchPersonalDictionary)
+if ($wgSphinxSuggestMode && isset($wgSphinxSearchPersonalDictionary))
 {
     $wgSpecialPages['SphinxSearchPersonalDict'] = 'SphinxSearchPersonalDict';
     $wgSpecialPageGroups['SphinxSearchPersonalDict'] = 'search';
