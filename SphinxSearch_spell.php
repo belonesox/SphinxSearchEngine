@@ -29,7 +29,7 @@ class SphinxSearch_spell
         for ($i = count($words)-1; $i >= 0; $i--)
         {
             $word = $words[$i][0];
-            if ($spell[$word] && $spell[$word] !== true)
+            if (!empty($spell[$word]) && $spell[$word] !== true)
             {
                 list($r) = self::bestguess($word, $spell[$word]);
                 if (mb_strtolower($word) != mb_strtolower($r))

@@ -9,6 +9,8 @@
 
 class SphinxSearchEngine extends SearchEngine
 {
+    var $orderby = '';
+
     function __construct($db)
     {
         global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index;
@@ -234,7 +236,8 @@ class SphinxSearchResultSet extends SearchResultSet
             $this->meta['total'], $this->term, $this->meta['time']
         ), false);
         $fmt = wfMsgNoTrans('sphinxSearchStats');
-        for ($i = 0; $this->meta["keyword[$i]"]; $i++)
+        $wiki = '';
+        for ($i = 0; !empty($this->meta["keyword[$i]"]); $i++)
             $wiki .= sprintf($fmt, $this->meta["keyword[$i]"], $this->meta["hits[$i]"], $this->meta["docs[$i]"]) . "\n";
         $html .= $wgOut->parse($wiki);
         if ($wgSphinxSuggestMode)
