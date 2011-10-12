@@ -31,8 +31,8 @@ class SearchUpdate
 
         if ($wgDisableSearchUpdate || !$this->mId)
             return false;
-
         wfProfileIn(__METHOD__);
+
         $search = SearchEngine::create();
 
         if ($this->mText === false)
@@ -49,6 +49,6 @@ class SearchUpdate
         // Perform the actual update
         $search->update($this->mId, $this->mTitle, $text);
 
-        wfProfileOut($fname);
+        wfProfileOut(__METHOD__);
     }
 }
