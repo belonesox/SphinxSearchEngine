@@ -14,7 +14,10 @@ class SphinxSearchEngine extends SearchEngine
     function __construct($db)
     {
         global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index;
-        $this->db = $db;
+        if ($db)
+            $this->db = $db;
+        else
+            $this->db = wfGetDB(DB_SLAVE);
         $this->sphinx = new SphinxQLClient();
         $this->index = $wgSphinxQL_index;
         $this->sphinx->connect($wgSphinxQL_host.':'.$wgSphinxQL_port);
