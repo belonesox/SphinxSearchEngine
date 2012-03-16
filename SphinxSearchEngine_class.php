@@ -170,10 +170,13 @@ class SphinxSearchEngine extends SearchEngine
     }
 
     // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
-    static function LoadExtensionSchemaUpdates()
+    static function LoadExtensionSchemaUpdates($updater = NULL)
     {
         global $wgUpdates, $wgDBtype;
-        $wgUpdates[$wgDBtype][] = array('SphinxSearchEngine::init_index');
+        if ($updater)
+            $updater->addExtensionUpdate(array('SphinxSearchEngine::init_index'));
+        else
+            $wgUpdates[$wgDBtype][] = array('SphinxSearchEngine::init_index');
         return true;
     }
 
