@@ -405,7 +405,7 @@ class SphinxQLClient
                 if (is_int($args[$j]))
                     $nq .= $args[$j];
                 else
-                    $nq .= "'".mysql_escape_string($args[$j])."'";
+                    $nq .= "'".mysql_real_escape_string($args[$j], $this->dbh)."'";
                 $j++;
                 $nq .= substr($query, $pos[$i][1]+1, $pos[$i+1][1]-$pos[$i][1]-1);
             }
