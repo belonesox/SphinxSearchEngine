@@ -44,7 +44,7 @@ $wgSearchType = 'SphinxSearchEngine';
 if (!isset($wgSphinxQL_host))
     $wgSphinxQL_host = '';
 if (!isset($wgSphinxQL_port))
-    $wgSphinxQL_port = '/var/run/searchd.sock';
+    $wgSphinxQL_port = '/var/run/sphinxsearch/searchd.sock';
 if (!isset($wgSphinxQL_index))
     $wgSphinxQL_index = 'wiki';
 
