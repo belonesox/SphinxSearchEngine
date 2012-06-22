@@ -146,7 +146,7 @@ class SphinxSearch_spell
             $suggest[$word] = true;
         foreach (explode("\n", $output) as $str)
         {
-            if ($str{0} == '&' || $str{0} == '#')
+            if ($str && ($str{0} == '&' || $str{0} == '#'))
             {
                 $word = substr($str, 2, strpos($str, ' ', 2)-2);
                 $suggest[$word] = array();
