@@ -18,9 +18,8 @@ class SphinxSearchEngine extends SearchEngine
             $this->db = $db;
         else
             $this->db = wfGetDB(DB_SLAVE);
-        $this->sphinx = new SphinxQLClient();
+        $this->sphinx = new SphinxQLClient($wgSphinxQL_host.':'.$wgSphinxQL_port);
         $this->index = $wgSphinxQL_index;
-        $this->sphinx->connect($wgSphinxQL_host.':'.$wgSphinxQL_port);
     }
 
     function searchTitle($term)
@@ -123,14 +122,21 @@ class SphinxSearchEngine extends SearchEngine
         );
         $cur = array();
         $total = $res->numRows();
+        $query_size = 0;
         foreach ($res as $i => $row)
         {
-            $cur[] = $row->page_id;
-            $cur[] = $row->page_namespace;
-            $cur[] = str_replace('_', ' ', $row->page_title);
-            $cur[] = $row->old_text;
-            $cur[] = str_replace('_', ' ', $row->category);
-            if (count($cur) >= 256*5 || $i >= $total)
+            $row->page_title = str_replace('_', ' ', $row->page_title);
+            $row->category = str_replace('_', ' ', $row->category);
+            // Trigger SearchUpdate and allow extensions to change indexed text
+            wfRunHooks('SearchUpdate', array($row->page_id, $row->page_namespace, $row->page_title, &$row->old_text));
+            foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category') as $key)
+            {
+                // 2MB limit for field length
+                $cur[] = substr($row->$key, 0, 2*1024*1024);
+                $query_size += strlen($row->$key);
+            }
+            // Sphinx max_packet is 8MB by default, so use 6MB for partial query
+            if (count($cur) >= 256*5 || $query_size > 6*1024*1024 || $i >= $total)
             {
                 fwrite(STDERR, "\r$i / $total...");
                 fflush(STDERR);
@@ -140,9 +146,12 @@ class SphinxSearchEngine extends SearchEngine
                 if (!$this->sphinx->query($q, $cur))
                 {
                     // Print error
-                    print("[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n");
+                    $msg = "[ERROR] ".__METHOD__.": ".$this->sphinx->error()."\n";
+                    wfDebug($msg);
+                    print($msg);
                 }
                 $cur = array();
+                $query_size = 0;
             }
         }
         fwrite(STDERR, "\n");
@@ -376,22 +385,69 @@ class SphinxSearchResult extends SearchResult
 // Just for convenience, and to support '?' placeholders
 class SphinxQLClient
 {
-    // Connect to Sphinx, $host = "host:port"
-    function connect($host)
+    protected $host;
+    protected $crashed;
+
+    /**
+     * Create a client for SphinxQL running on $host
+     * @param string $host Can be just "host", "host:port" or ":/var/run/searchd.sock" - path to UNIX socket
+     */
+    function __construct($host)
     {
-        $this->dbh = mysql_connect($host);
+        $this->host = $host;
+        $this->crashed = true;
     }
-    // Destructor disconnects automatically
+
+    /**
+     * Connect to Sphinx
+     */
+    function connect()
+    {
+        $host = $this->host;
+        $port = 3306;
+        $socket = '';
+        if (strpos($host, ':') !== false)
+        {
+            list($host, $port) = explode(':', $host, 2);
+        }
+        if (strpos($port, '/') !== false)
+        {
+            $socket = $port;
+            $port = 3306;
+            $host = '';
+        }
+        $this->dbh = new mysqli($host, '', '', 'any', $port, $socket);
+        $this->dbh->set_charset('utf8');
+        $this->crashed = false;
+    }
+
+    /**
+     * Destructor disconnects automatically
+     */
     function __destruct()
     {
         if ($this->dbh)
-            mysql_close($this->dbh);
+        {
+            $this->dbh->close();
+        }
     }
-    // Interpolate $args into '?' inside $query and run it
+
+    /**
+     * Interpolate $args into '?' inside $query and run it
+     * @param string $query
+     * @param array $args
+     */
     function query($query, $args = array())
     {
+        if ($this->crashed)
+        {
+            // Reconnect after a crash
+            $this->connect();
+        }
         if (!$this->dbh)
+        {
             return NULL;
+        }
         preg_match_all('/\\?/', $query, $pos, PREG_PATTERN_ORDER|PREG_OFFSET_CAPTURE);
         $pos = $pos[0];
         if ($pos)
@@ -405,37 +461,60 @@ class SphinxQLClient
                 if (is_int($args[$j]))
                     $nq .= $args[$j];
                 else
-                    $nq .= "'".mysql_real_escape_string($args[$j], $this->dbh)."'";
+                    $nq .= "'".$this->dbh->real_escape_string($args[$j])."'";
                 $j++;
                 $nq .= substr($query, $pos[$i][1]+1, $pos[$i+1][1]-$pos[$i][1]-1);
             }
             $query = $nq;
         }
         $this->lastq = $query;
-        return mysql_query($query, $this->dbh);
+        $res = $this->dbh->query($query);
+        if ($this->dbh->errno == 2006)
+        {
+            // "MySQL server has gone away" - this query crashed Sphinx.
+            // Reconnect on next query.
+            $this->crashed = true;
+        }
+        return $res;
     }
-    // Run the query with $args and return rows in the array with column $key as a key
+
+    /**
+     * Run the query with $args and return rows in the array with column $key as a key
+     * @param string $query
+     * @param string $key
+     * @param array $args
+     * @return array(array)
+     */
     function select($query, $key = NULL, $args = array())
     {
         $res = $this->query($query, $args);
         if (!$res)
             return NULL;
         $rows = array();
-        while ($r = mysql_fetch_array($res))
+        while ($r = $res->fetch_array())
         {
             if ($key !== NULL)
                 $rows[$r[$key]] = $r;
             else
                 $rows[] = $r;
         }
-        mysql_free_result($res);
         return $rows;
     }
-    // Return error text, if any
+
+    /**
+     * Return error text, if any
+     * @return string or NULL
+     */
     function error()
     {
-        if ($this->dbh && mysql_errno($this->dbh))
-            return mysql_errno($this->dbh).': '.mysql_error($this->dbh)."\nFailed query was:\n".$this->lastq;
+        if ($this->dbh && $this->dbh->errno)
+        {
+            return $this->dbh->errno.': '.$this->dbh->error."\nFailed query was:\n".$this->lastq;
+        }
+        elseif (mysqli_connect_errno())
+        {
+            return mysqli_connect_errno().': '.mysqli_connect_error();
+        }
         return NULL;
     }
 }
