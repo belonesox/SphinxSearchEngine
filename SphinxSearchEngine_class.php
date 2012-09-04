@@ -154,7 +154,7 @@ class SphinxSearchEngine extends SearchEngine
         $lastid = 0;
         do
         {
-            $ids = $this->sphinx->select('SELECT id FROM '.$eng->index.' WHERE id>'.$lastid.' ORDER BY id');
+            $ids = $this->sphinx->select('SELECT id FROM '.$this->index.' WHERE id>'.$lastid.' ORDER BY id');
             if (!$ids)
                 break;
             foreach ($ids as &$id)
@@ -165,7 +165,7 @@ class SphinxSearchEngine extends SearchEngine
             foreach ($res as $row)
                 unset($deleted[$row->page_id]);
             if ($deleted)
-                $this->sphinx->query('DELETE FROM '.$eng->index.' WHERE id IN ('.implode(',', $deleted).')');
+                $this->sphinx->query('DELETE FROM '.$this->index.' WHERE id IN ('.implode(',', $deleted).')');
         } while (1);
     }
 
