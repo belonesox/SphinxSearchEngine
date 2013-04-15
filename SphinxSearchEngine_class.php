@@ -387,6 +387,7 @@ class SphinxQLClient
 {
     protected $host;
     protected $crashed;
+    public $dbh;
 
     /**
      * Create a client for SphinxQL running on $host
