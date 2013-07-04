@@ -56,7 +56,7 @@ class SphinxSearchEngine extends SearchEngine
             $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
         }
 
-        $rows = $this->sphinx->select($query, 'id', array($term));
+        $rows = $this->sphinx->select($query, 'id', array($this->filter($term)));
         if ($rows === NULL)
         {
             global $wgOut;
@@ -68,10 +68,17 @@ class SphinxSearchEngine extends SearchEngine
         return $res;
     }
 
-    // Filter $text - just a stub
+    // Filter $text - escape search query
     function filter($text)
     {
-        return $text;
+        $pattern_part = '|\[\]:\-\(\)!@~&\/^$=';
+        $text = trim($text);
+        $text = preg_replace('/^['.$pattern_part.']+|['.$pattern_part.']+$/', '', $text); // Erase special chars in the beginning and at the end of query
+        if (substr_count($text, '"')%2) // Searching for double chars " and checking it
+        {
+            $pattern_part .= '"';
+        }
+        return preg_replace('/(['.$pattern_part.'])/', '\\\\\1', $text);
     }
 
     // Updates an index entry
