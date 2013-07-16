@@ -71,14 +71,14 @@ class SphinxSearchEngine extends SearchEngine
     // Filter $text - escape search query
     function filter($text)
     {
-        $deny_chars_pattern = '\[\]:\(\)!@~&\/^$';
+        $pattern_part = '\[\]:\(\)!@~&\/^$';
         $text = trim($text);
-        $text = preg_replace('/^[|\[\]:\-\(\)!@~&\/^$=]+|[|\[\]:\-\(\)!@~&\/^$=]+$/', '', $text); // Erase special chars in the beginning and at the end of query
+        $text = preg_replace('/^[|\-='.$pattern_part.']+|[|\-='.$pattern_part.']+$/', '', $text); // Erase special chars in the beginning and at the end of query
         if (substr_count($text, '"')%2) // Searching for double chars " and checking it
         {
-            $deny_chars_pattern .= '"';
+            $pattern_part .= '"';
         }
-        return preg_replace('/(['.$deny_chars_pattern.'])/', '\\\\\1', $text);
+        return preg_replace('/(['.$pattern_part.'])/', '\\\\\1', $text);
     }
 
     // Updates an index entry
