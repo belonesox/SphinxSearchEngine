@@ -78,7 +78,7 @@ class SphinxSearchEngine extends SearchEngine
         {
             $pattern_part .= '"';
         }
-        return preg_replace('/(['.$pattern_part.'])/', '\\\\\1', $text);
+        return preg_replace('/((^|[^\\\\])(?:\\\\\\\\)*)(['.$pattern_part.'])/', '\1\\\\\2', $text);
     }
 
     // Updates an index entry
