@@ -245,6 +245,7 @@ class SphinxSearchResultSet extends SearchResultSet
             {
                 $this->dbTexts[$row->page_id] = $row->old_text;
                 $this->dbTitles[$row->page_id] = $row;
+                $this->dbTitles[$row->page_id]->score = isset($rows[$row->page_id]['weight']) ? $rows[$row->page_id]['weight'] : null;
             }
         }
     }
@@ -358,7 +359,7 @@ class SphinxSearchResultSet extends SearchResultSet
                 $entry = "<div style='margin: 0 0 0.2em 1em;'>$entry</div>\n";
             }
             $excerpts = implode("", $excerpts);
-            return new SphinxSearchResult($this->dbTitles[$doc], $excerpts);
+            return new SphinxSearchResult($this->dbTitles[$doc], $excerpts, $this->dbTitles[$doc]->score);
         }
         return NULL;
     }
@@ -375,16 +376,25 @@ class SphinxSearchResultSet extends SearchResultSet
 // Overridden to allow custom snippets (via Sphinx)
 class SphinxSearchResult extends SearchResult
 {
-    function __construct($dbRow, $snippet)
+    var $score;
+
+    function __construct($dbRow, $snippet, $score)
     {
         parent::__construct($dbRow);
         $this->snippet = $snippet;
+        $this->score = $score;
     }
 
     // $terms is ignored
     function getTextSnippet($terms = NULL)
     {
         return $this->snippet;
+    }
+
+    // return weight of search item
+    function getScore()
+    {
+        return $this->score;
     }
 }
 
