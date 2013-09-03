@@ -74,7 +74,7 @@ class SphinxSearchEngine extends SearchEngine
         $pattern_part = '\[\]:\(\)!@~&\/^$';
         $text = trim($text);
         $text = preg_replace('/^[|\-='.$pattern_part.']+|[|\-='.$pattern_part.']+$/', '', $text); // Erase special chars in the beginning and at the end of query
-        if (substr_count($text, '"')%2) // Searching for double chars " and checking it
+        if (substr_count($text, '"') % 2) // Search for double chars " and check it
         {
             $pattern_part .= '"';
         }
@@ -168,7 +168,7 @@ class SphinxSearchEngine extends SearchEngine
     function purge_deleted()
     {
         $lastid = 0;
-        do
+        while (1)
         {
             $ids = $this->sphinx->select('SELECT id FROM '.$this->index.' WHERE id>'.$lastid.' ORDER BY id');
             if (!$ids)
@@ -182,7 +182,7 @@ class SphinxSearchEngine extends SearchEngine
                 unset($deleted[$row->page_id]);
             if ($deleted)
                 $this->sphinx->query('DELETE FROM '.$this->index.' WHERE id IN ('.implode(',', $deleted).')');
-        } while (1);
+        }
     }
 
     // This hook is called from maintenance/update.php, it builds the Sphinx index if it's empty
@@ -219,7 +219,6 @@ class SphinxSearchResultSet extends SearchResultSet
 {
     function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index)
     {
-        wfLoadExtensionMessages('SphinxSearchEngine');
         $this->sphinxResult = $rows;
         $this->sphinx = $sphinx;
         $this->meta = $sphinx->select('SHOW META', 0);
@@ -235,6 +234,16 @@ class SphinxSearchResultSet extends SearchResultSet
         $this->ids = array_keys($rows);
         $this->dbTitles = array();
         $this->dbTexts = array();
+        // Try our best to normalize scores
+        // Max score for SPH_RANK_PROXIMITY_BM25 = num_keywords * sum(field_weights) * 1000 + 999
+        global $wgSphinxQL_weights;
+        preg_match_all('/[\w\pL\d]+/u', $term, $m, PREG_SET_ORDER);
+        $maxScore = 0;
+        foreach ($wgSphinxQL_weights as $w)
+        {
+            $maxScore += $w;
+        }
+        $maxScore = count($m) * $maxScore * 1000 + 999;
         if ($rows)
         {
             $res = $this->db->select(array('page', 'revision', 'text'), 'page.*, old_text',
@@ -245,7 +254,7 @@ class SphinxSearchResultSet extends SearchResultSet
             {
                 $this->dbTexts[$row->page_id] = $row->old_text;
                 $this->dbTitles[$row->page_id] = $row;
-                $this->dbTitles[$row->page_id]->score = isset($rows[$row->page_id]['weight']) ? $rows[$row->page_id]['weight'] : null;
+                $this->dbTitles[$row->page_id]->score = isset($rows[$row->page_id]['weight']) ? $rows[$row->page_id]['weight'] / $maxScore : null;
             }
         }
     }
