@@ -26,6 +26,11 @@ $messages['en'] = array(
     'sphinxsearchdempty'       => 'Dictionary is empty',
     'sphinxsearchdnotfound'    => 'Dictionary not found',
     'sphinxsearchdexecute'     => 'Execute',
+    /*Category List*/
+    'sphinxsearchCatNoCategory'     => 'Without category',
+    'sphinxsearchCatWidgetTitle'    => 'Search in categories:',
+    'sphinxsearchCatWidgetMin'      => 'Minimize it',
+    'sphinxsearchCatWidgetButton'   => 'Filter',
 );
 
 $messages['ru'] = array(
@@ -49,4 +54,9 @@ $messages['ru'] = array(
     'sphinxsearchnotadded'     => "Слово '''%s''' не добавлено в словарь потому, что содержит небуквенные символы",
     'sphinxsearchcantpersonaldict' => 'Вам запрещено править словарь проверки орфографии {{SITENAME}}',
     'noexactmatch'             => "'''Страницы с названием «$1» не существует.''' [[:$1|Создать страницу]].",
+    /*Category List*/
+    'sphinxsearchCatNoCategory' => 'Без категории',
+    'sphinxsearchCatWidgetTitle'    => 'Поиск в найденных категориях:',
+    'sphinxsearchCatWidgetMin'      => 'Скрыть список',
+    'sphinxsearchCatWidgetButton'   => 'Применить фильтр',
 );

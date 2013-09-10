@@ -11,15 +11,22 @@ class SphinxSearchEngine extends SearchEngine
 {
     var $orderby = '';
 
+    // Category List variable
+    var $categoryList = array();
+    var $selCategoryList = array();
+
     function __construct($db)
     {
-        global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index;
+        global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index, $wgRequest;
         if ($db)
             $this->db = $db;
         else
             $this->db = wfGetDB(DB_SLAVE);
         $this->sphinx = new SphinxQLClient($wgSphinxQL_host.':'.$wgSphinxQL_port);
         $this->index = $wgSphinxQL_index;
+
+        // Get used category from request
+        $this->selCategoryList = $wgRequest->getArray( 'category' );
     }
 
     function searchTitle($term)
@@ -36,11 +43,13 @@ class SphinxSearchEngine extends SearchEngine
     function searchText($term)
     {
         global $wgSphinxQL_weights;
-        $found = 0;
 
         // don't do anything for blank searches
         if (!preg_match('/[\w\pL\d]/u', $term))
             return new SearchResultSet();
+
+        // Get category list from search result
+        $this->getCategoryList($term);
 
         $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
         if ($this->namespaces)
@@ -56,7 +65,17 @@ class SphinxSearchEngine extends SearchEngine
             $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
         }
 
-        $rows = $this->sphinx->select($query, 'id', array($this->filter($term)));
+        $sTerm = $this->filter($term);
+
+        // Add search in selected categories
+        if ($this->selCategoryList)
+        {
+            $sTerm .= ' @category_search '.$this->filter(implode("|", array_map( function( $value ) {
+                return '"__'.preg_replace("/[^(\w)|(\x7F-\xFF)|(\s)]/", "_", str_replace(' ', '_', $value)).'__"';
+            }, $this->selCategoryList)));
+        }
+
+        $rows = $this->sphinx->select($query, 'id', array( $sTerm ));
         if ($rows === NULL)
         {
             global $wgOut;
@@ -64,8 +83,23 @@ class SphinxSearchEngine extends SearchEngine
             $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
             return NULL;
         }
-        $res = new SphinxSearchResultSet($this->db, $this->sphinx, $term, $this->offset, $this->limit, $this->namespaces, $rows, $this->index);
+        $res = new SphinxSearchResultSet($this->db, $this->sphinx, $term, $this->offset, $this->limit, $this->namespaces, $rows, $this->index, $this->categoryList, $this->selCategoryList);
         return $res;
+    }
+
+    /**
+     * Get category list from search query
+     *
+     * @param $term Search string
+     */
+    function getCategoryList($term)
+    {
+        $rows = $this->sphinx->select('SELECT id, category FROM '.$this->index.' WHERE MATCH(?) GROUP BY category', 'id', array($this->filter($term)));
+        if ($rows !== NULL)
+            foreach($rows as $row)
+                $this->categoryList = array_merge(explode("|", $row['category']), $this->categoryList);
+        if (!empty($this->categoryList))
+            $this->categoryList = array_filter(array_unique($this->categoryList));
     }
 
     // Filter $text - escape search query
@@ -89,10 +123,13 @@ class SphinxSearchEngine extends SearchEngine
         $cat = array();
         foreach ($res as $row)
             $cat[] = $row->cl_to;
-        $cat = str_replace('_', ' ', implode(', ', $cat));
+        $cat_search = $cat == '' ? '__empty__' : implode("|", array_map( function( $value ) {
+                return '__'.preg_replace("/[^(\w)|(\x7F-\xFF)|(\s)]/", "_", $value).'__';
+            }, explode("|", $cat))) ;
+        $cat = str_replace('_', ' ', implode('|', $cat));
         if (!$this->sphinx->query('REPLACE INTO '.$this->index.
-                ' (id, namespace, title, text, category) VALUES (?, ?, ?, ?, ?)',
-                array($id, $title->getNamespace(), $title->getText(), $text, $cat)
+                ' (id, namespace, title, text, category, category_search) VALUES (?, ?, ?, ?, ?, ?)',
+                array($id, $title->getNamespace(), $title->getText(), $text, $cat, $cat_search)
             ))
         {
             // Log the error
@@ -117,7 +154,7 @@ class SphinxSearchEngine extends SearchEngine
         $ids = array();
         $res = $this->db->select(
             array('page', 'revision', 'text', 'categorylinks'),
-            'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(cl_to SEPARATOR \',\') category',
+            'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(cl_to SEPARATOR \'|\') category',
             array('1'),
             __METHOD__,
             array('GROUP BY' => 'page_id'),
@@ -133,10 +170,14 @@ class SphinxSearchEngine extends SearchEngine
         foreach ($res as $i => $row)
         {
             $row->page_title = str_replace('_', ' ', $row->page_title);
+            $row->category_search = $row->category == '' ? '__empty__' : implode("|", array_map( function( $value ) {
+                    return '__'.preg_replace("/[^(\w)|(\x7F-\xFF)|(\s)]/", "_", $value).'__';
+                }, explode("|", $row->category))) ;
+
             $row->category = str_replace('_', ' ', $row->category);
             // Trigger SearchUpdate and allow extensions to change indexed text
             wfRunHooks('SearchUpdate', array($row->page_id, $row->page_namespace, $row->page_title, &$row->old_text));
-            foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category') as $key)
+            foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category', 'category_search') as $key)
             {
                 // 2MB limit for field length
                 $cur[] = substr($row->$key, 0, 2*1024*1024);
@@ -148,8 +189,8 @@ class SphinxSearchEngine extends SearchEngine
                 fwrite(STDERR, "\r$i / $total...");
                 fflush(STDERR);
                 $q = 'REPLACE INTO '.$this->index.
-                    ' (id, namespace, title, text, category) VALUES '.
-                    substr(str_repeat(', (?, ?, ?, ?, ?)', count($cur)/5), 2);
+                    ' (id, namespace, title, text, category, category_search) VALUES '.
+                    substr(str_repeat(', (?, ?, ?, ?, ?, ?)', count($cur)/6), 2);
                 if (!$this->sphinx->query($q, $cur))
                 {
                     // Print error
@@ -217,7 +258,11 @@ class SphinxSearchEngine extends SearchEngine
 
 class SphinxSearchResultSet extends SearchResultSet
 {
-    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index)
+    // Category List variable
+    var $categoryList = array();
+    var $selCategoryList = array();
+
+    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index, $categoryList = array(), $selCategoryList = array())
     {
         $this->sphinxResult = $rows;
         $this->sphinx = $sphinx;
@@ -234,6 +279,10 @@ class SphinxSearchResultSet extends SearchResultSet
         $this->ids = array_keys($rows);
         $this->dbTitles = array();
         $this->dbTexts = array();
+
+        $this->categoryList = $categoryList;
+        $this->selCategoryList = !empty($selCategoryList) ? array_flip($selCategoryList) : array();
+
         // Try our best to normalize scores
         // Max score for SPH_RANK_PROXIMITY_BM25 = num_keywords * sum(field_weights) * 1000 + 999
         global $wgSphinxQL_weights;
@@ -246,10 +295,19 @@ class SphinxSearchResultSet extends SearchResultSet
         $maxScore = count($m) * $maxScore * 1000 + 999;
         if ($rows)
         {
-            $res = $this->db->select(array('page', 'revision', 'text'), 'page.*, old_text',
-                array('page_id' => array_keys($rows), 'page_latest=rev_id', 'rev_text_id=old_id'),
-                __METHOD__
+            $res = $this->db->select(
+                array('page', 'revision', 'text', 'categorylinks'),
+                'page.*, old_text, GROUP_CONCAT(cl_to SEPARATOR \',\') category',
+                array('page_id' => array_keys($rows)),
+                __METHOD__,
+                array('GROUP BY' => 'page_id'),
+                array(
+                    'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
+                    'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
+                    'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
+                )
             );
+
             foreach ($res as $row)
             {
                 $this->dbTexts[$row->page_id] = $row->old_text;
@@ -262,15 +320,29 @@ class SphinxSearchResultSet extends SearchResultSet
     function getInfo()
     {
         global $wgOut, $wgSphinxSuggestMode;
+
+        $wgOut->addModules( 'ext.SphinxSearchEngine' );
+
         $html = $wgOut->parse(sprintf(
             wfMsgNoTrans('sphinxSearchPreamble'),
             $this->offset+1, $this->offset+$this->numRows(),
             $this->meta['total'], $this->term, $this->meta['time']
         ), false);
+
         $fmt = wfMsgNoTrans('sphinxSearchStats');
         $wiki = '';
         for ($i = 0; !empty($this->meta["keyword[$i]"]); $i++)
-            $wiki .= sprintf($fmt, $this->meta["keyword[$i]"], $this->meta["hits[$i]"], $this->meta["docs[$i]"]) . "\n";
+        {
+            $show = true;
+            foreach($this->selCategoryList as $key=>$item)
+            {
+                if (mb_strtolower('__'.preg_replace("/[^(\w)|(\x7F-\xFF)|(\s)]/", "_", str_replace(' ', '_', $key)).'__') == mb_strtolower($this->meta["keyword[$i]"]))
+                    $show = false;
+            }
+            if ($show)
+                $wiki .= sprintf($fmt, $this->meta["keyword[$i]"], $this->meta["hits[$i]"], $this->meta["docs[$i]"]) . "\n";
+        }
+
         $html .= $wgOut->parse($wiki);
         if ($wgSphinxSuggestMode)
         {
@@ -286,6 +358,29 @@ class SphinxSearchResultSet extends SearchResultSet
         }
         $html .= $this->createNextPageBar($this->limit, $this->limit ? 1+$this->offset/$this->limit : 0, $this->meta['total']);
         $html = '<div class="mw-search-formheader" style="padding: 0.5em; margin-bottom: 1em">'.$html.'</div>';
+
+        // Category List html widget
+        if ($this->categoryList)
+        {
+            $catListHtml = '<input type="checkbox" value="empty" name="scl[]" '.((empty($this->selCategoryList) || isset($this->selCategoryList['empty'])) ? ' checked="checked" ' : '').' id="scl_item_0" /> <label for="scl_item_0">'.wfMsg('sphinxsearchCatNoCategory').'</label><br />';
+
+            foreach($this->categoryList as $key=>$item)
+            {
+                $catListHtml .= '<input type="checkbox" value="'.$item.'" name="scl[]" '.((empty($this->selCategoryList) || isset($this->selCategoryList[$item])) ? ' checked="checked" ' : '').'  id="scl_item_'.($key+1).'"/> <label for="scl_item_'.($key+1).'">'.$item.'</label><br />';
+            }
+
+            $html .= '
+            <div class="mw-scl">
+                <b>'.wfMsg('sphinxsearchCatWidgetTitle').'</b><div class="close"><a href="#" id="scl_button" title="'.wfMsg('sphinxsearchCatWidgetMin').'">[-]</a></div>
+                <div class="divider" style=""></div>
+                <div id="scl">
+                    '.$catListHtml.'
+                <input type="button" value="'.wfMsg('sphinxsearchCatWidgetButton').'" id="scl_submit"  />
+                </div>
+            </div>
+            ';
+        }
+
         return "search words: --> $html <!-- /search words:";
     }
 

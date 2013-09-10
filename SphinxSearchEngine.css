@@ -1,0 +1,43 @@
+
+.mw-scl .hidden {
+    display: none;
+}
+
+.searchresults {
+    position: relative;
+}
+
+.mw-scl h4 {
+    float: left;
+}
+
+.mw-scl .close {
+    float: right;
+}
+
+.mw-scl .close a {
+    font-size: 16px;
+}
+
+.mw-scl {
+    position: absolute;
+    top: 22px;
+    right: 0px;
+    width: 22%;
+    background-color: #F3F3F3;
+    border: 1px solid silver;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    padding: 0.5em;
+}
+
+.mw-scl .divider {
+    border-bottom: 1px solid #DDDDDD;
+    clear: both;
+    margin-bottom: 0.5em;
+    padding-top: 0.5em;
+}
+
+.searchresults .mw-search-formheader {
+    width: 75%;
+}

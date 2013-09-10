@@ -36,6 +36,13 @@ $wgHooks['LoadExtensionSchemaUpdates'][] = 'SphinxSearchEngine::LoadExtensionSch
 $wgHooks['ArticleDelete'][] = 'SphinxSearchEngine::ArticleDelete';
 $wgSearchType = 'SphinxSearchEngine';
 
+$wgResourceModules['ext.SphinxSearchEngine'] = array(
+    'localBasePath' => $dir,
+    'remoteExtPath' => 'SphinxSearchEngine',
+    'styles'        => array('SphinxSearchEngine.css'),
+    'scripts'       => array('SphinxSearchEngine.js'),
+);
+
 ##########################################################
 # Default configuration
 ##########################################################
