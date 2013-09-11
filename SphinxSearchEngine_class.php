@@ -9,7 +9,10 @@
 
 class SphinxSearchEngine extends SearchEngine
 {
-    var $orderby = '';
+    var $orderBy = '';
+    var $orderSort = '';
+    var $allowOrderByFields = array('weight', 'date_insert', 'date_modify');
+    var $allowOrderBySort = array('desc', 'asc');
 
     // Category List variable
     var $categoryList = array();
@@ -27,6 +30,26 @@ class SphinxSearchEngine extends SearchEngine
 
         // Get used category from request
         $this->selCategoryList = $wgRequest->getArray( 'category' );
+
+        // Get sort order from request
+        $orderByRequest = $wgRequest->getVal( 'orderBy' );
+        foreach ( $this->allowOrderByFields as $field ) {
+            if ( !empty( $orderByRequest ) && $orderByRequest == $field ) {
+                $this->orderBy = $orderByRequest;
+            }
+        }
+        if (empty($this->orderBy))
+            $this->orderBy = reset($this->allowOrderByFields);
+
+        $orderSortRequest = $wgRequest->getVal( 'sort' );
+        foreach ( $this->allowOrderBySort as $field ) {
+            if ( !empty( $orderSortRequest ) && $orderSortRequest == $field ) {
+                $this->orderSort = $orderSortRequest;
+            }
+        }
+        if (empty($this->orderSort))
+            $this->orderSort = reset($this->allowOrderBySort);
+
     }
 
     function searchTitle($term)
@@ -54,8 +77,8 @@ class SphinxSearchEngine extends SearchEngine
         $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
         if ($this->namespaces)
             $query .= ' AND namespace IN ('.implode(',', $this->namespaces).')';
-        if ($this->orderby)
-            $query .= ' ORDER BY '.$this->orderby;
+        if ($this->orderBy && $this->orderSort)
+            $query .= ' ORDER BY `'.$this->orderBy.'` '.$this->orderSort;
         $query .= ' LIMIT '.$this->offset.', '.$this->limit;
         if ($wgSphinxQL_weights)
         {
@@ -83,7 +106,8 @@ class SphinxSearchEngine extends SearchEngine
             $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
             return NULL;
         }
-        $res = new SphinxSearchResultSet($this->db, $this->sphinx, $term, $this->offset, $this->limit, $this->namespaces, $rows, $this->index, $this->categoryList, $this->selCategoryList);
+        $res = new SphinxSearchResultSet($this->db, $this->sphinx, $term, $this->offset, $this->limit,
+            $this->namespaces, $rows, $this->index, $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort);
         return $res;
     }
 
@@ -127,9 +151,13 @@ class SphinxSearchEngine extends SearchEngine
                 return '__'.preg_replace("/[^(\w)|(\x7F-\xFF)|(\s)]/", "_", $value).'__';
             }, explode("|", $cat))) ;
         $cat = str_replace('_', ' ', implode('|', $cat));
+        $date_insert_row = $dbr->selectRow( 'revision', array('date_insert' => 'MIN(rev_timestamp) as date_insert'), array( 'rev_page' => $id ), __METHOD__, array('GROUP BY' => 'rev_page') );
+        $date_insert = $date_insert_row->date_insert;
+        $date_modify_row = $dbr->selectRow( 'revision', array('date_insert' => 'MAX(rev_timestamp) as date_insert'), array( 'rev_page' => $id ), __METHOD__, array('GROUP BY' => 'rev_page') );
+        $date_modify = $date_modify_row->date_insert;
         if (!$this->sphinx->query('REPLACE INTO '.$this->index.
-                ' (id, namespace, title, text, category, category_search) VALUES (?, ?, ?, ?, ?, ?)',
-                array($id, $title->getNamespace(), $title->getText(), $text, $cat, $cat_search)
+                ' (id, namespace, title, text, category, category_search, date_insert, date_modify) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                array($id, $title->getNamespace(), $title->getText(), $text, $cat, $cat_search, $date_insert, $date_modify)
             ))
         {
             // Log the error
@@ -153,8 +181,9 @@ class SphinxSearchEngine extends SearchEngine
         fwrite(STDERR, "Filling the Sphinx full-text index...\n");
         $ids = array();
         $res = $this->db->select(
-            array('page', 'revision', 'text', 'categorylinks'),
-            'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(cl_to SEPARATOR \'|\') category',
+            array('page', 'revision', 'text', 'categorylinks', 'rev' => 'revision'),
+                'page_id, page_namespace, page_title, old_text, GROUP_CONCAT(DISTINCT cl_to SEPARATOR \'|\') category,
+                MIN(rev.rev_timestamp) as date_insert, revision.rev_timestamp as date_modify',
             array('1'),
             __METHOD__,
             array('GROUP BY' => 'page_id'),
@@ -162,6 +191,7 @@ class SphinxSearchEngine extends SearchEngine
                 'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
                 'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
                 'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
+                'rev' => array('LEFT JOIN', array('rev.rev_page=page_id')),
             )
         );
         $cur = array();
@@ -177,7 +207,7 @@ class SphinxSearchEngine extends SearchEngine
             $row->category = str_replace('_', ' ', $row->category);
             // Trigger SearchUpdate and allow extensions to change indexed text
             wfRunHooks('SearchUpdate', array($row->page_id, $row->page_namespace, $row->page_title, &$row->old_text));
-            foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category', 'category_search') as $key)
+            foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category', 'category_search', 'date_insert', 'date_modify') as $key)
             {
                 // 2MB limit for field length
                 $cur[] = substr($row->$key, 0, 2*1024*1024);
@@ -189,8 +219,8 @@ class SphinxSearchEngine extends SearchEngine
                 fwrite(STDERR, "\r$i / $total...");
                 fflush(STDERR);
                 $q = 'REPLACE INTO '.$this->index.
-                    ' (id, namespace, title, text, category, category_search) VALUES '.
-                    substr(str_repeat(', (?, ?, ?, ?, ?, ?)', count($cur)/6), 2);
+                    ' (id, namespace, title, text, category, category_search, date_insert, date_modify) VALUES '.
+                    substr(str_repeat(', (?, ?, ?, ?, ?, ?, ?, ?)', count($cur)/8), 2);
                 if (!$this->sphinx->query($q, $cur))
                 {
                     // Print error
@@ -258,11 +288,17 @@ class SphinxSearchEngine extends SearchEngine
 
 class SphinxSearchResultSet extends SearchResultSet
 {
+    var $orderBy = '';
+    var $orderSort = '';
+    var $allowOrderByFields = array('weight', 'date_insert', 'date_modify');
+    var $allowOrderBySort = array('desc', 'asc');
+    var $orderBySortChar = array('desc' => '&#9660;', 'asc' => '&#9650');
+
     // Category List variable
     var $categoryList = array();
     var $selCategoryList = array();
 
-    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index, $categoryList = array(), $selCategoryList = array())
+    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index, $categoryList = array(), $selCategoryList = array(), $orderBy = null, $orderSort = null)
     {
         $this->sphinxResult = $rows;
         $this->sphinx = $sphinx;
@@ -280,8 +316,13 @@ class SphinxSearchResultSet extends SearchResultSet
         $this->dbTitles = array();
         $this->dbTexts = array();
 
+        // Get Category from query
         $this->categoryList = $categoryList;
         $this->selCategoryList = !empty($selCategoryList) ? array_flip($selCategoryList) : array();
+
+        // Get sorting from query
+        $this->orderBy = $orderBy;
+        $this->orderSort = $orderSort;
 
         // Try our best to normalize scores
         // Max score for SPH_RANK_PROXIMITY_BM25 = num_keywords * sum(field_weights) * 1000 + 999
@@ -343,13 +384,13 @@ class SphinxSearchResultSet extends SearchResultSet
                 $wiki .= sprintf($fmt, $this->meta["keyword[$i]"], $this->meta["hits[$i]"], $this->meta["docs[$i]"]) . "\n";
         }
 
+        global $wgTitle;
         $html .= $wgOut->parse($wiki);
         if ($wgSphinxSuggestMode)
         {
             $didyoumean = SphinxSearch_spell::spell($this->term);
             if ($didyoumean)
             {
-                global $wgTitle;
                 $html = wfMsg('sphinxSearchDidYouMean') . " <b><a href='" .
                     $wgTitle->getLocalUrl(array('search' => $didyoumean)+$_GET) . "'>" .
                     htmlspecialchars($didyoumean) . '</a></b>?<br />' .
@@ -358,6 +399,31 @@ class SphinxSearchResultSet extends SearchResultSet
         }
         $html .= $this->createNextPageBar($this->limit, $this->limit ? 1+$this->offset/$this->limit : 0, $this->meta['total']);
         $html = '<div class="mw-search-formheader" style="padding: 0.5em; margin-bottom: 1em">'.$html.'</div>';
+        // Sorting html widget
+        $html .= '<div class="mw-search-sort"><label><b>'.wfMsg('searchSortTitle').'</b></label>';
+        foreach($this->allowOrderByFields as $item)
+        {
+            $arrow = '';
+            if ($item != $this->orderBy) {
+                $sort = reset($this->allowOrderBySort);
+            }
+            else
+            {
+                foreach($this->allowOrderBySort as $s_item)
+                    if ($s_item != $this->orderSort)
+                        $sort = $s_item;
+                $arrow = ' '.$this->orderBySortChar[$this->orderSort];
+            }
+
+            $url_option = array('search' => $this->term, 'orderBy' => $item, 'sort' => $sort);
+            if (!empty($this->selCategoryList))
+            {
+                $url_option['category'] =  array_flip($this->selCategoryList);
+            }
+
+            $html .= '<a href="'.$wgTitle->getLocalUrl($url_option).'">'.wfMsg('searchSortOrder_'.$item).$arrow.'</a>';
+        }
+        $html .= '</div>';
 
         // Category List html widget
         if ($this->categoryList)

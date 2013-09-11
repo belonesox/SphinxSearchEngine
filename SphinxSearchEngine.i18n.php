@@ -31,6 +31,14 @@ $messages['en'] = array(
     'sphinxsearchCatWidgetTitle'    => 'Search in categories:',
     'sphinxsearchCatWidgetMin'      => 'Minimize it',
     'sphinxsearchCatWidgetButton'   => 'Filter',
+    /* Sorting */
+    'searchSortTitle'               => 'Sort by:',
+    'searchSortButton'              => 'Sort',
+    'searchSortOrder_weight'        => 'Relevance',
+    'searchSortOrder_date_insert'   => 'Date insert',
+    'searchSortOrder_date_modify'   => 'Date modify',
+    'searchSort_desc'               => 'Desc.',
+    'searchSort_asc'                => 'Asc.',
 );
 
 $messages['ru'] = array(
@@ -59,4 +67,13 @@ $messages['ru'] = array(
     'sphinxsearchCatWidgetTitle'    => 'Поиск в найденных категориях:',
     'sphinxsearchCatWidgetMin'      => 'Скрыть список',
     'sphinxsearchCatWidgetButton'   => 'Применить фильтр',
+    /* Sorting */
+    'searchSortTitle'               => 'Сортировать по:',
+    'searchSortButton'              => 'Применить',
+    'searchSortOrder_weight'        => 'Релевантности',
+    'searchSortOrder_date_insert'   => 'Дате создания',
+    'searchSortOrder_date_modify'   => 'Дате изменения',
+    'searchSort_desc'               => 'Убыв.',
+    'searchSort_asc'                => 'Возр.',
+
 );

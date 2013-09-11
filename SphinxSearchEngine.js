@@ -26,5 +26,15 @@ jQuery( function( $ ) {
             href += '&category[]=' + encodeURIComponent( $(this).val() );
         } );
         window.location.href = href;
-    });
+    } );
+
+    $('#search_sort_button').click( function( e ) {
+        e.preventDefault( );
+        var url_this = window.location.toString().split("&orderBy=" );
+        var url = url_this[0];
+        $(".mw-search-sort select").each( function( ) {
+            url += '&' + $(this).prop('id') + '=' + encodeURIComponent( $(this).val() );
+        } );
+        window.location.href = url;
+    } );
 } );

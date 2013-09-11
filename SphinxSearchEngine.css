@@ -41,3 +41,18 @@
 .searchresults .mw-search-formheader {
     width: 75%;
 }
+
+.mw-search-sort {
+    margin-top: -10px;
+    text-align: right;
+    padding-right: 24%;
+}
+
+.mw-search-sort label {
+   margin-right: 0.5em;
+}
+
+.mw-search-sort a {
+    margin-right: 5px;
+    text-decoration: underline;
+}
