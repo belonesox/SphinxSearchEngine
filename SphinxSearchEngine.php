@@ -1,11 +1,42 @@
 <?php
 
 /**
- * Pluggable Sphinx search engine for MediaWiki 1.16+ and Sphinx 0.99+ (real-time indexing)
+ * Pluggable Sphinx search engine for MediaWiki 1.16+ and Sphinx 0.99+ (using real-time indexing)
  * http://wiki.4intra.net/SphinxSearchEngine
- * (c) 2011, Vitaliy Filippov
- * License: GPL 3.0 or later (see http://www.fsf.org/licenses/gpl.html)
+ * (c) 2011-2013, Vitaliy Filippov
+ * License: GNU GPL 3.0 or later (see http://www.fsf.org/licenses/gpl.html)
  */
+
+/*
+
+Features:
+- Real-time search updates
+- Filtering of search results by category
+- Sorting by relevance, creation or modification date
+
+Example Sphinx index configuration:
+
+index wiki
+{
+    # Required:
+    type            = rt
+    rt_field        = text
+    rt_field        = title
+    rt_attr_uint    = namespace
+    rt_attr_string  = category
+    rt_field        = category_search
+    rt_attr_uint    = date_insert
+    # Override some of these if you want
+    path            = /var/lib/sphinxsearch/data/wiki
+    enable_star     = 1
+    charset_type    = utf-8
+    charset_table   = 0..9, A..Z->a..z, a..z, U+410..U+42F->U+430..U+44F, U+430..U+44F
+    blend_chars     = _, -, &, +, @, $
+    morphology      = stem_enru
+    min_word_len    = 2
+}
+
+*/
 
 if (!defined('MEDIAWIKI'))
 {
@@ -14,7 +45,7 @@ if (!defined('MEDIAWIKI'))
 }
 
 $wgExtensionCredits['specialpage'][] = array(
-    'version'     => '0.9',
+    'version'     => '1.2',
     'name'        => 'SphinxSearchEngine',
     'author'      => 'Vitaliy Filippov',
     'email'       => 'vitalif@mail.ru',
@@ -65,7 +96,7 @@ $wgSphinxQL_ExcerptsOptions = array(
 );
 
 # Weights of individual indexed columns. This gives page titles extra weight
-$wgSphinxQL_weights = array('category' => 2, 'text' => 1, 'title' => 100);
+$wgSphinxQL_weights = array('category' => 2, 'text' => 1, 'title' => 20);
 
 ##########################################################
 # Suggest Mode configuration options
