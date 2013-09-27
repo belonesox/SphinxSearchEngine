@@ -7,9 +7,18 @@
  * License: GPL 3.0 or later (see http://www.fsf.org/licenses/gpl.html)
  */
 
+// 1.18 compatibility
+if (!interface_exists('DeferrableUpdate'))
+{
+    interface DeferrableUpdate
+    {
+        function doUpdate();
+    }
+}
+
 // Similar to standard SearchUpdate, but does not refuck the text
 // using mysterious regexes, does not remove any links etc
-class SearchUpdate
+class SearchUpdate implements DeferrableUpdate
 {
     var $mId, $mTitle, $mText;
 
