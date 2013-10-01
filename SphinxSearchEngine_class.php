@@ -41,7 +41,7 @@ class SphinxSearchEngine extends SearchEngine
     function getSearchFormValues()
     {
         global $wgRequest, $wgTitle;
-        $this->isFormRequest = $wgTitle->getPrefixedText() == SpecialPage::getTitleFor('Search')->getPrefixedText();
+        $this->isFormRequest = $wgTitle && $wgTitle->getPrefixedText() == SpecialPage::getTitleFor('Search')->getPrefixedText();
         if ($this->isFormRequest)
         {
             // Get used category from request
