@@ -499,8 +499,9 @@ class SphinxSearchResultSet extends SearchResultSet
                 if ($k === 'offset')
                 {
                     // Go to the first page
+                    $v = 0;
                 }
-                elseif (is_array($v))
+                if (is_array($v))
                 {
                     foreach ($v as $sk => $sv)
                     {
