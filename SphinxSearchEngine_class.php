@@ -492,11 +492,15 @@ class SphinxSearchResultSet extends SearchResultSet
     {
         if ($this->categoryList)
         {
-            global $wgRequest;
+            global $wgRequest, $wgTitle;
             $hidden = '';
             foreach ($wgRequest->getValues() as $k => $v)
             {
-                if (is_array($v))
+                if ($k === 'offset')
+                {
+                    // Go to the first page
+                }
+                elseif (is_array($v))
                 {
                     foreach ($v as $sk => $sv)
                     {
@@ -511,14 +515,12 @@ class SphinxSearchResultSet extends SearchResultSet
             $catListHtml = '<input type="checkbox" value="" name="category[]"'.
                 ((empty($this->selCategoryList) || isset($this->selCategoryList[''])) ? ' checked="checked" ' : '').
                 ' id="scl_item_0" /> <label for="scl_item_0">'.wfMsg('sphinxsearchCatNoCategory').'</label><br />';
-
             foreach ($this->categoryList as $key => $item)
             {
                 $catListHtml .= '<input type="checkbox" value="'.$item.'" name="category[]"'.
                     ((empty($this->selCategoryList) || isset($this->selCategoryList[$item])) ? ' checked="checked" ' : '').
                     ' id="scl_item_'.($key+1).'"/> <label for="scl_item_'.($key+1).'">'.$item.'</label><br />';
             }
-
             return '
             <div class="mw-scl">
                 <form action="?" method="GET">'.
@@ -566,17 +568,22 @@ class SphinxSearchResultSet extends SearchResultSet
 
     function createNextPageBar($perpage, $page, $found)
     {
-        global $wgTitle;
-
-        $display_pages = 30;
+        global $wgTitle, $wgOut;
+        $params = $_GET;
+        unset($params['title']);
         $max_page = ceil($found / $perpage);
+        if ($page > $max_page || $page != intval($page))
+        {
+            $wgOut->redirect($wgTitle->getLocalUrl(array('offset' => ($max_page-1)*$perpage) + $params));
+        }
+        $display_pages = 20;
         $center_page = $page;
         $first_page = $center_page - $display_pages / 2;
         if ($first_page < 1)
         {
             $first_page = 1;
         }
-        $last_page = $first_page + $display_pages / 2;
+        $last_page = $center_page + $display_pages / 2;
         if ($last_page > $max_page)
         {
             $last_page = $max_page;
@@ -587,22 +594,22 @@ class SphinxSearchResultSet extends SearchResultSet
             $html .= wfMsg('sphinxResultPage');
             if ($first_page > 1)
             {
-                $prev_page = "&nbsp;<a href=\"" . $wgTitle->getLocalUrl(array('offset' => ($page-2)*$perpage)+$_GET);
+                $prev_page = "&nbsp;<a href=\"" . $wgTitle->getLocalUrl(array('offset' => ($page-2)*$perpage)+$params);
                 $prev_page .= "\">" . wfMsg('sphinxPreviousPage') ."</a> ";
                 $html .= $prev_page;
             }
             for ($i = $first_page; $i < $page; $i++)
             {
-                $html .= "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => ($i-1)*$perpage)+$_GET)."'>{$i}</a> ";
+                $html .= "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => ($i-1)*$perpage)+$params)."'>{$i}</a> ";
             }
             $html .= "&nbsp;<b>{$page}</b> ";
             for ($i = $page+1; $i <= $last_page; $i++)
             {
-                $html .= "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => ($i-1)*$perpage)+$_GET)."'>{$i}</a> ";
+                $html .= "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => ($i-1)*$perpage)+$params)."'>{$i}</a> ";
             }
             if ($last_page < $max_page)
             {
-                $next_page  = "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => $page*$perpage)+$_GET);
+                $next_page = "&nbsp;<a href='".$wgTitle->getLocalUrl(array('offset' => $page*$perpage)+$params);
                 $next_page .= "'>" . wfMsg('sphinxNextPage') ."</a> ";
                 $html .= $next_page;
             }
