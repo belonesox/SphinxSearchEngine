@@ -19,13 +19,12 @@
 }
 
 .mw-scl {
-    position: absolute;
-    top: 22px;
+    float: right;
     right: 0px;
     width: 22%;
     background-color: #F3F3F3;
     border: 1px solid silver;
-    margin-top: 1em;
+    margin-top: 2.5em;
     margin-bottom: 1em;
     padding: 0.5em;
 }

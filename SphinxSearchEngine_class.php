@@ -552,6 +552,11 @@ class SphinxSearchResultSet extends SearchResultSet
             $this->meta['total'], $this->term, $this->meta['time']
         ), false);
 
+        if ($this->isFormRequest)
+        {
+            $html .= $this->getCategorySelector();
+        }
+
         $html .=
             '<div class="mw-search-formheader" style="padding: 0.5em; margin-bottom: 1em">'.
             $this->getTermStats() .
@@ -562,7 +567,6 @@ class SphinxSearchResultSet extends SearchResultSet
         if ($this->isFormRequest)
         {
             $html .= $this->getSortOrder();
-            $html .= $this->getCategorySelector();
         }
 
         return "search words: --> $html <!-- /search words:";
