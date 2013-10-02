@@ -31,6 +31,7 @@ $messages['en'] = array(
     'sphinxsearchCatWidgetTitle'    => 'Search in categories:',
     'sphinxsearchCatWidgetMin'      => 'Minimize it',
     'sphinxsearchCatWidgetButton'   => 'Filter',
+    'sphinxsearchCatSelectAll'      => 'All',
     /* Sorting */
     'searchSortTitle'               => 'Sort by:',
     'searchSortButton'              => 'Sort',
@@ -67,6 +68,7 @@ $messages['ru'] = array(
     'sphinxsearchCatWidgetTitle'    => 'Поиск в найденных категориях:',
     'sphinxsearchCatWidgetMin'      => 'Скрыть список',
     'sphinxsearchCatWidgetButton'   => 'Применить фильтр',
+    'sphinxsearchCatSelectAll'      => 'Все',
     /* Sorting */
     'searchSortTitle'               => 'Сортировать по:',
     'searchSortButton'              => 'Применить',

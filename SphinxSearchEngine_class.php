@@ -528,10 +528,11 @@ class SphinxSearchResultSet extends SearchResultSet
                 $hidden.
                 '<b>'.wfMsg('sphinxsearchCatWidgetTitle').'</b><div class="close"><a href="javascript:void(0)" id="scl_button" title="'.wfMsg('sphinxsearchCatWidgetMin').'">[-]</a></div>
                 <div class="divider" style=""></div>
+                <input type="checkbox" value="1" name="select_all" id="select_all" '.(empty($this->selCategoryList) ? ' checked="checked" ' : '' ).' /> <label for="select_all" id="select_all_label">'.wfMsg('sphinxsearchCatSelectAll').'</label>
                 <div id="scl">
                     '.$catListHtml.'
-                <input type="submit" value="'.wfMsg('sphinxsearchCatWidgetButton').'" />
                 </div>
+                <input type="submit" value="'.wfMsg('sphinxsearchCatWidgetButton').'"/>
                 </form>
             </div>
             ';

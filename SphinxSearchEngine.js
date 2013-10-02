@@ -8,4 +8,13 @@ jQuery( function( $ ) {
             $("#scl").addClass( 'hidden' );
         }
     });
+
+    $("#select_all").click( function( e ) {
+        if ( $(this).prop( 'checked' ) ) {
+            $("#scl input").prop("checked", true);
+        } else {
+            $("#scl input").prop("checked", false);
+        }
+    });
 } );
+
