@@ -646,7 +646,12 @@ class SphinxSearchResultSet extends SearchResultSet
             $doc = $this->ids[$this->position++];
             $snip_query = 'CALL SNIPPETS(?, ?, ?';
             $snip_bind = array($this->dbTexts[$doc], $this->index, $this->term);
-            foreach ($wgSphinxQL_ExcerptsOptions as $k => $v)
+            $options = array(
+                'before_match' => "\x01",
+                'after_match' => "\x02",
+                'html_strip_mode' => 'none',
+            ) + $wgSphinxQL_ExcerptsOptions;
+            foreach ($options as $k => $v)
             {
                 $snip_query .= ", ? AS $k";
                 $snip_bind[] = $v;
@@ -659,10 +664,13 @@ class SphinxSearchResultSet extends SearchResultSet
             }
             foreach ($excerpts as &$entry)
             {
-                // add excerpt to output, remove some wiki markup and break apart long strings
-                $entry = $entry[0];
-                $entry = preg_replace('/([\[\]\{\}\*\#\|\!]+|==+)/', ' ', strip_tags($entry, '<span><br>'));
-                $entry = join('<br />', preg_split('/(\P{Z}{60})/u', $entry, -1, PREG_SPLIT_NO_EMPTY | PREG_SPLIT_DELIM_CAPTURE));
+                // add excerpt to output, escape HTML
+                $entry = htmlspecialchars($entry[0]);
+                $entry = preg_replace("/\n\s*/", "<br />", str_replace(
+                    array("\x01", "\x02"),
+                    array($wgSphinxQL_ExcerptsOptions['before_match'], $wgSphinxQL_ExcerptsOptions['after_match']),
+                    $entry
+                ));
                 $entry = "<div style='margin: 0 0 0.2em 1em;'>$entry</div>\n";
             }
             $excerpts = implode("", $excerpts);
@@ -798,6 +806,7 @@ class SphinxQLClient
         {
             // "MySQL server has gone away" - this query crashed Sphinx.
             // Reconnect on next query.
+            // FIXME: This may be also caused by timeout, in this case redo the query...
             $this->crashed = true;
         }
         return $res;
