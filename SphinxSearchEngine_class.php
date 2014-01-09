@@ -117,20 +117,106 @@ class SphinxSearchEngine extends SearchEngine
             $sTerm .= ' @category_search "'.implode('"|"', self::categoryForSearch($this->selCategoryList)).'"';
         }
 
-        $rows = $this->sphinx->select($query, 'id', array($sTerm));
-        if ($rows === NULL)
+        $sphinxRows = $this->sphinx->select($query, 'id', array($sTerm));
+        if ($sphinxRows === NULL)
         {
             global $wgOut;
             wfDebug("[ERROR] ".__METHOD__.": ".$this->sphinx->error());
             $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
             return NULL;
         }
+        $dbRows = array();
+        if ($sphinxRows)
+        {
+            $query = array(
+                'tables' => array('page', 'revision', 'text', 'categorylinks'),
+                'fields' => array('page.*', 'old_text', 'GROUP_CONCAT(cl_to SEPARATOR \',\') category'),
+                'conds' => array('page_id' => array_keys($sphinxRows)),
+                'join_conds' => array(
+                    'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
+                    'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
+                    'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
+                ),
+                'options' => array(),
+            );
+            $sortkey = array_flip(array_keys($sphinxRows));
+            $res = $this->db->select(
+                $query['tables'], $query['fields'], $query['conds'],
+                __METHOD__, $query['options'], $query['join_conds']
+            );
+            $maxScore = $this->getMaxScore($term);
+            foreach ($res as $row)
+            {
+                $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : null;
+                $dbRows[$sortkey[$row->page_id]] = $row;
+            }
+            // Build excerpts
+            $this->buildExcerpts($dbRows, $this->index, $term);
+        }
         $res = new SphinxSearchResultSet(
             $this->db, $this->sphinx, $term, $this->offset, $this->limit,
-            $this->namespaces, $rows, $this->index, $this->isFormRequest,
+            $this->namespaces, $dbRows, $this->index, $this->isFormRequest,
             $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort
         );
         return $res;
+    }
+
+    function buildExcerpts(&$dbRows, $index, $term)
+    {
+        global $wgSphinxQL_ExcerptsOptions;
+        $snip_query = 'CALL SNIPPETS(?, ?, ?';
+        $options = array(
+            'before_match' => "\x01",
+            'after_match' => "\x02",
+            'html_strip_mode' => 'none',
+        ) + $wgSphinxQL_ExcerptsOptions;
+        foreach ($options as $k => $v)
+        {
+            $snip_query .= ", ".$this->sphinx->quote($v)." AS $k";
+        }
+        $snip_query .= ')';
+        foreach ($dbRows as &$row)
+        {
+            $excerpts = $this->sphinx->select($snip_query, NULL, array($row->old_text, $index, $term));
+            if (!$excerpts)
+            {
+                $excerpts = array("ERROR: " . $this->sphinx->error());
+            }
+            foreach ($excerpts as &$entry)
+            {
+                // add excerpt to output, escape HTML
+                $entry = htmlspecialchars($entry[0]);
+                $entry = preg_replace("/\n\s*/", "<br />", str_replace(
+                    array("\x01", "\x02"),
+                    array($wgSphinxQL_ExcerptsOptions['before_match'], $wgSphinxQL_ExcerptsOptions['after_match']),
+                    $entry
+                ));
+                $entry = "<div style='margin: 0 0 0.2em 1em;'>$entry</div>\n";
+            }
+            $row->excerpts = implode("", $excerpts);
+            unset($row->old_text);
+        }
+    }
+
+    /**
+     * Try our best to normalize scores - calculate maximum Sphinx score for a given search query
+     * Max score for SPH_RANK_PROXIMITY_BM25 = num_keywords * sum(field_weights) * 1000 + 999
+     */
+    function getMaxScore($term)
+    {
+        global $wgSphinxQL_weights;
+        preg_match_all('/[\w\pL\d]+/u', $term, $m, PREG_SET_ORDER);
+        $maxScore = 0;
+        foreach ($wgSphinxQL_weights as $w)
+        {
+            $maxScore += $w;
+        }
+        $maxScore = count($m) * $maxScore * 1000 + 999;
+        if ($this->selCategoryList)
+        {
+            $maxScore += $wgSphinxQL_weights['category'] * count($this->selCategoryList);
+        }
+        return $maxScore;
     }
 
     /**
@@ -255,7 +341,7 @@ class SphinxSearchEngine extends SearchEngine
                 $query_size += strlen($row->$key);
             }
             // Sphinx max_packet is 8MB by default, so use 6MB for partial query
-            if (count($cur) >= 256*5 || $query_size > 6*1024*1024 || $i >= $total)
+            if (count($cur) >= 256*8 || $query_size > 7*1024*1024 || $i >= $total)
             {
                 fwrite(STDERR, "\r$i / $total...");
                 fflush(STDERR);
@@ -350,10 +436,9 @@ class SphinxSearchResultSet extends SearchResultSet
     var $categoryList = array();
     var $selCategoryList = array();
 
-    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $rows, $index,
+    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $dbRows, $index,
         $isFormRequest = false, $categoryList = array(), $selCategoryList = array(), $orderBy = null, $orderSort = null)
     {
-        $this->sphinxResult = $rows;
         $this->sphinx = $sphinx;
         $this->meta = $sphinx->select('SHOW META', 0);
         foreach ($this->meta as &$m)
@@ -367,9 +452,7 @@ class SphinxSearchResultSet extends SearchResultSet
         $this->term = $term;
         $this->db = $db;
         $this->position = 0;
-        $this->ids = array_keys($rows);
-        $this->dbTitles = array();
-        $this->dbTexts = array();
+        $this->dbRows = $dbRows;
         $this->isFormRequest = $isFormRequest;
 
         // Get categories from query
@@ -379,44 +462,6 @@ class SphinxSearchResultSet extends SearchResultSet
         // Get sorting from query
         $this->orderBy = $orderBy;
         $this->orderSort = $orderSort;
-
-        // Try our best to normalize scores
-        // Max score for SPH_RANK_PROXIMITY_BM25 = num_keywords * sum(field_weights) * 1000 + 999
-        global $wgSphinxQL_weights;
-        preg_match_all('/[\w\pL\d]+/u', $term, $m, PREG_SET_ORDER);
-        $maxScore = 0;
-        foreach ($wgSphinxQL_weights as $w)
-        {
-            $maxScore += $w;
-        }
-        $maxScore = count($m) * $maxScore * 1000 + 999;
-        if ($this->selCategoryList)
-        {
-            $maxScore += $wgSphinxQL_weights['category'] * count($this->selCategoryList);
-        }
-
-        if ($rows)
-        {
-            $res = $this->db->select(
-                array('page', 'revision', 'text', 'categorylinks'),
-                'page.*, old_text, GROUP_CONCAT(cl_to SEPARATOR \',\') category',
-                array('page_id' => array_keys($rows)),
-                __METHOD__,
-                array('GROUP BY' => 'page_id'),
-                array(
-                    'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
-                    'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
-                    'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
-                )
-            );
-
-            foreach ($res as $row)
-            {
-                $this->dbTexts[$row->page_id] = $row->old_text;
-                $this->dbTitles[$row->page_id] = $row;
-                $this->dbTitles[$row->page_id]->score = isset($rows[$row->page_id]['weight']) ? $rows[$row->page_id]['weight'] / $maxScore : null;
-            }
-        }
     }
 
     // Term statistics widget
@@ -625,7 +670,7 @@ class SphinxSearchResultSet extends SearchResultSet
 
     function numRows()
     {
-        return count($this->sphinxResult);
+        return count($this->dbRows);
     }
 
     function hasResults()
@@ -640,51 +685,18 @@ class SphinxSearchResultSet extends SearchResultSet
 
     function next()
     {
-        global $wgSphinxQL_ExcerptsOptions;
+        $item = NULL;
         if ($this->position < $this->numRows())
         {
-            $doc = $this->ids[$this->position++];
-            $snip_query = 'CALL SNIPPETS(?, ?, ?';
-            $snip_bind = array($this->dbTexts[$doc], $this->index, $this->term);
-            $options = array(
-                'before_match' => "\x01",
-                'after_match' => "\x02",
-                'html_strip_mode' => 'none',
-            ) + $wgSphinxQL_ExcerptsOptions;
-            foreach ($options as $k => $v)
-            {
-                $snip_query .= ", ? AS $k";
-                $snip_bind[] = $v;
-            }
-            $snip_query .= ')';
-            $excerpts = $this->sphinx->select($snip_query, NULL, $snip_bind);
-            if (!$excerpts)
-            {
-                $excerpts = array("ERROR: " . $this->sphinx->error());
-            }
-            foreach ($excerpts as &$entry)
-            {
-                // add excerpt to output, escape HTML
-                $entry = htmlspecialchars($entry[0]);
-                $entry = preg_replace("/\n\s*/", "<br />", str_replace(
-                    array("\x01", "\x02"),
-                    array($wgSphinxQL_ExcerptsOptions['before_match'], $wgSphinxQL_ExcerptsOptions['after_match']),
-                    $entry
-                ));
-                $entry = "<div style='margin: 0 0 0.2em 1em;'>$entry</div>\n";
-            }
-            $excerpts = implode("", $excerpts);
-            return new SphinxSearchResult($this->dbTitles[$doc], $excerpts, $this->dbTitles[$doc]->score);
+            $item = new SphinxSearchResult($this->dbRows[$this->position], $this->dbRows[$this->position]->excerpts, $this->dbRows[$this->position]->score);
+            $this->position++;
         }
-        return NULL;
+        return $item;
     }
 
     function free()
     {
-        $this->dbTitles = NULL;
-        $this->dbTexts = NULL;
-        $this->sphinxResult = NULL;
-        $this->ids = array();
+        $this->dbRows = NULL;
     }
 }
 
@@ -766,6 +778,16 @@ class SphinxQLClient
     }
 
     /**
+     * Escape a value for use inside the query
+     */
+    function quote($v)
+    {
+        if (is_int($v))
+            return $v;
+        return "'".$this->dbh->real_escape_string($v)."'";
+    }
+
+    /**
      * Interpolate $args into '?' inside $query and run it
      * @param string $query
      * @param array $args
@@ -791,10 +813,7 @@ class SphinxQLClient
             $pos[$n] = array('', strlen($query));
             for ($i = 0; $i < $n; $i++)
             {
-                if (is_int($args[$j]))
-                    $nq .= $args[$j];
-                else
-                    $nq .= "'".$this->dbh->real_escape_string($args[$j])."'";
+                $nq .= $this->quote($args[$j]);
                 $j++;
                 $nq .= substr($query, $pos[$i][1]+1, $pos[$i+1][1]-$pos[$i][1]-1);
             }
