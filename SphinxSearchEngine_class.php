@@ -74,7 +74,7 @@ class SphinxSearchEngine extends SearchEngine
     // Main search function
     function searchText($term)
     {
-        global $wgSphinxQL_weights;
+        global $wgSphinxQL_weights, $wgSphinxSE_port;
 
         // don't do anything for blank searches
         if (!preg_match('/[\w\pL\d]/u', $term))
@@ -88,67 +88,106 @@ class SphinxSearchEngine extends SearchEngine
             $this->getCategoryList($term);
         }
 
-        $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
-        if ($this->namespaces)
-        {
-            $query .= ' AND namespace IN ('.implode(',', $this->namespaces).')';
-        }
-        if ($this->orderBy && $this->orderSort)
-        {
-            $query .= ' ORDER BY `'.$this->orderBy.'` '.$this->orderSort;
-        }
-        $query .= ' LIMIT '.$this->offset.', '.$this->limit;
-        if ($wgSphinxQL_weights)
-        {
-            $ws = $wgSphinxQL_weights;
-            foreach ($ws as $k => &$w)
-            {
-                $w = "$k=".intval($w);
-            }
-            unset($w);
-            $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
-        }
-
         $sTerm = $this->filter($term);
-
-        // Search in selected categories
         if ($this->selCategoryList)
         {
+            // Search in selected categories
             $sTerm .= ' @category_search "'.implode('"|"', self::categoryForSearch($this->selCategoryList)).'"';
         }
 
-        $sphinxRows = $this->sphinx->select($query, 'id', array($sTerm));
-        if ($sphinxRows === NULL)
+        if (!$wgSphinxSE_port)
         {
-            global $wgOut;
-            wfDebug("[ERROR] ".__METHOD__.": ".$this->sphinx->error());
-            $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
-            return NULL;
+            $query = 'SELECT *, WEIGHT() `weight` FROM '.$this->index.' WHERE MATCH(?)';
+            if ($this->namespaces)
+            {
+                $query .= ' AND namespace IN ('.implode(',', $this->namespaces).')';
+            }
+            $query .= ' ORDER BY `'.$this->orderBy.'` '.$this->orderSort;
+            $query .= ' LIMIT '.$this->offset.', '.$this->limit;
+            if ($wgSphinxQL_weights)
+            {
+                $ws = $wgSphinxQL_weights;
+                foreach ($ws as $k => &$w)
+                {
+                    $w = "$k=".intval($w);
+                }
+                unset($w);
+                $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
+            }
+            $sphinxRows = $this->sphinx->select($query, 'id', array($sTerm));
+            if ($sphinxRows === NULL)
+            {
+                global $wgOut;
+                wfDebug("[ERROR] ".__METHOD__.": ".$this->sphinx->error());
+                $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
+                return NULL;
+            }
         }
+
         $dbRows = array();
-        if ($sphinxRows)
+        if ($wgSphinxSE_port || $sphinxRows)
         {
             $query = array(
                 'tables' => array('page', 'revision', 'text', 'categorylinks'),
                 'fields' => array('page.*', 'old_text', 'GROUP_CONCAT(cl_to SEPARATOR \',\') category'),
-                'conds' => array('page_id' => array_keys($sphinxRows)),
+                'conds' => array(),
                 'join_conds' => array(
                     'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
                     'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
                     'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
                 ),
-                'options' => array(),
+                'options' => array('GROUP BY' => 'page_id'),
             );
-            $sortkey = array_flip(array_keys($sphinxRows));
+            $maxScore = $this->getMaxScore($term);
+            if ($wgSphinxSE_port)
+            {
+                $seQuery = '';
+                if ($wgSphinxQL_weights)
+                {
+                    foreach ($wgSphinxQL_weights as $k => $w)
+                    {
+                        $seQuery .= ",$k,".intval($w);
+                    }
+                    $seQuery = ';fieldweights='.substr($seQuery, 1);
+                }
+                $seQuery = str_replace(';', '\\\\;', $sTerm).';mode=extended;limit=1000'.$seQuery;
+                $query['tables'][] = 'sphinx_page';
+                $query['fields'][] = 'sphinx_page.weight/'.$maxScore.' score';
+                $query['join_conds']['page'] = array('INNER JOIN', array('page_id=sphinx_page.id'));
+                $query['conds']['sphinx_page.query'] = $seQuery;
+                if ($this->namespaces)
+                {
+                    $query['conds']['sphinx_page.namespace'] = $this->namespaces;
+                }
+                $query['options']['ORDER BY'] = 'sphinx_page.'.$this->orderBy.' '.$this->orderSort;
+                $query['options']['LIMIT'] = $this->limit;
+                $query['options']['OFFSET'] = $this->offset;
+                // IntraACL DBMS-side filtering compatibility hook (for correct pagination)
+                wfRunHooks('FilterPageQuery', array(&$query, 'page', NULL, NULL));
+            }
+            else
+            {
+                $query['conds']['page_id'] = array_keys($sphinxRows);
+                $sortkey = array_flip(array_keys($sphinxRows));
+            }
             $res = $this->db->select(
                 $query['tables'], $query['fields'], $query['conds'],
                 __METHOD__, $query['options'], $query['join_conds']
             );
-            $maxScore = $this->getMaxScore($term);
-            foreach ($res as $row)
+            if ($wgSphinxSE_port)
             {
-                $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : null;
-                $dbRows[$sortkey[$row->page_id]] = $row;
+                foreach ($res as $row)
+                {
+                    $dbRows[] = $row;
+                }
+            }
+            else
+            {
+                foreach ($res as $row)
+                {
+                    $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : null;
+                    $dbRows[$sortkey[$row->page_id]] = $row;
+                }
             }
             // Build excerpts
             $this->buildExcerpts($dbRows, $this->index, $term);
@@ -409,11 +448,37 @@ class SphinxSearchEngine extends SearchEngine
     // Initialise index, if not yet
     static function init_index()
     {
+        global $wgSphinxSE_port, $wgSphinxQL_host, $wgSphinxQL_index;
         $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
-        $rows = $eng->sphinx->select('select * from '.$eng->index.' limit 1');
+        $rows = $eng->sphinx->select('SELECT * FROM '.$eng->index.' LIMIT 1');
         if (!$rows && $eng->sphinx->dbh)
         {
             $eng->build_index();
+        }
+        if ($wgSphinxSE_port)
+        {
+            $dbw = wfGetDB(DB_MASTER);
+            fwrite(STDERR, "Creating the SphinxSE proxy table...\n");
+            if ($wgSphinxSE_port > 0)
+            {
+                $conn = "sphinx://".($wgSphinxQL_host ? $wgSphinxQL_host : 'localhost').':'.$wgSphinxSE_port.'/'.$wgSphinxQL_index;
+            }
+            else
+            {
+                $conn = "unix://".$wgSphinxSE_port.':'.$wgSphinxQL_index;
+            }
+            $t = $dbw->tableName('sphinx_page');
+            $dbw->query("DROP TABLE IF EXISTS $t");
+            $dbw->query("CREATE TABLE $t (".
+                "id BIGINT NOT NULL, ".
+                "`weight` INT NOT NULL, ".
+                "`query` VARCHAR(3072) NOT NULL, ".
+                "`namespace` INT NOT NULL, ".
+                "`category` VARCHAR(3072) NOT NULL, ".
+                "`date_insert` BIGINT NOT NULL, ".
+                "`date_modify` BIGINT NOT NULL, ".
+                "INDEX(`query`)".
+            ") ENGINE=SPHINX CONNECTION='$conn'", __METHOD__);
         }
         return true;
     }

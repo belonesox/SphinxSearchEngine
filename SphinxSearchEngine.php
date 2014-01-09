@@ -78,11 +78,21 @@ $wgResourceModules['ext.SphinxSearchEngine'] = array(
 # Default configuration
 ##########################################################
 
-# Host and port on which searchd is listening for SphinxQL
+# Host Sphinx Search daemon is running on
 if (!isset($wgSphinxQL_host))
     $wgSphinxQL_host = '';
+
+# Port, or path to a UNIX socket, on which Sphinx is listening for SphinxQL protocol
 if (!isset($wgSphinxQL_port))
     $wgSphinxQL_port = '/var/run/sphinxsearch/searchd.sock';
+
+# Port, or path to a UNIX socket, on which Sphinx is listening for regular (SphinxAPI) protocol
+# Specify ONLY if you want to use MySQL Sphinx Storage Engine for searching.
+# It is supported out-of-the-box in MariaDB; but you'll need to manually install it in case of MySQL.
+# This is a preferred method of searching particularly if you have IntraACL installed.
+$wgSphinxSE_port = false;
+
+# Name of the index to use for searching
 if (!isset($wgSphinxQL_index))
     $wgSphinxQL_index = 'wiki';
 
