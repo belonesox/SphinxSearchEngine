@@ -150,11 +150,12 @@ class SphinxSearchEngine extends SearchEngine
                     }
                     $seQuery = ';fieldweights='.substr($seQuery, 1);
                 }
-                $seQuery = str_replace(';', '\\\\;', $sTerm).';mode=extended;limit=1000'.$seQuery;
+                $seQuery = str_replace(array(';', '='), array('\\\\;', '\\\\='), $sTerm).';mode=extended;limit=1000'.$seQuery;
                 $query['tables'][] = 'sphinx_page';
                 $query['fields'][] = 'sphinx_page.weight/'.$maxScore.' score';
                 $query['join_conds']['page'] = array('INNER JOIN', array('page_id=sphinx_page.id'));
-                $query['conds']['sphinx_page.query'] = $seQuery;
+                // Strange escaping issues with SphinxSE... double escaping needed...
+                $query['conds']['sphinx_page.query'] = addslashes($seQuery);
                 if ($this->namespaces)
                 {
                     $query['conds']['sphinx_page.namespace'] = $this->namespaces;
@@ -288,11 +289,12 @@ class SphinxSearchEngine extends SearchEngine
         $pattern_part = '\[\]:\(\)!@~&\/^$';
         $text = trim($text);
         $text = preg_replace('/^[|\-='.$pattern_part.']+|[|\-='.$pattern_part.']+$/', '', $text); // Erase special chars in the beginning and at the end of query
-        if (substr_count($text, '"') % 2) // Search for double chars " and check it
+        if (substr_count($text, '"') % 2) // Search for double chars " and check them
         {
             $pattern_part .= '"';
         }
-        return preg_replace('/((^|[^\\\\])(?:\\\\\\\\)*)(['.$pattern_part.'])/', '\1\\\\\2', $text);
+        $text = preg_replace('/(?<=[\s\-])-(?=[\s\-])/', '\\-', $text);
+        return preg_replace('/((?<!\\\\)(?:\\\\\\\\)*)(['.$pattern_part.'])/', '\1\\\\\2', $text);
     }
 
     // Format category list for indexing
@@ -461,7 +463,7 @@ class SphinxSearchEngine extends SearchEngine
             fwrite(STDERR, "Creating the SphinxSE proxy table...\n");
             if ($wgSphinxSE_port > 0)
             {
-                $conn = "sphinx://".($wgSphinxQL_host ? $wgSphinxQL_host : 'localhost').':'.$wgSphinxSE_port.'/'.$wgSphinxQL_index;
+                $conn = "sphinx://".($wgSphinxQL_host ? $wgSphinxQL_host : '127.0.0.1').':'.$wgSphinxSE_port.'/'.$wgSphinxQL_index;
             }
             else
             {
