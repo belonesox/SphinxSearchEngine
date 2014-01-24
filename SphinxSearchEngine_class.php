@@ -604,17 +604,23 @@ class SphinxSearchResultSet extends SearchResultSet
     {
         if ($this->categoryList)
         {
-            foreach ($this->categoryList as $i => $cat)
+            global $wgRequest, $wgTitle;
+            $catListHtml = '';
+            foreach ($this->categoryList as $key => $item)
             {
-                if (!Title::makeTitle(NS_CATEGORY, $cat)->userCan('read'))
+                $title = Title::makeTitle(NS_CATEGORY, $item);
+                if ($title->userCan('read'))
                 {
-                    unset($this->categoryList[$i]);
+                    $catListHtml .= '<input type="checkbox" value="'.$item.'" name="category[]"'.
+                        ((empty($this->selCategoryList) || isset($this->selCategoryList[$item])) ? ' checked="checked" ' : '').
+                        ' id="scl_item_'.($key+1).'"/> <label for="scl_item_'.($key+1).'">'.$item.'</label>'.
+                        ' <a href="'.$title->getLocalUrl().'">&rarr;</a><br />';
                 }
             }
-        }
-        if ($this->categoryList)
-        {
-            global $wgRequest, $wgTitle;
+            if (!$catListHtml)
+            {
+                return '';
+            }
             $hidden = '';
             foreach ($wgRequest->getValues() as $k => $v)
             {
@@ -634,15 +640,6 @@ class SphinxSearchResultSet extends SearchResultSet
                 {
                     $hidden .= Html::hidden($k, $v);
                 }
-            }
-            $catListHtml = '<input type="checkbox" value="" name="category[]"'.
-                ((empty($this->selCategoryList) || isset($this->selCategoryList[''])) ? ' checked="checked" ' : '').
-                ' id="scl_item_0" /> <label for="scl_item_0">'.wfMsg('sphinxsearchCatNoCategory').'</label><br />';
-            foreach ($this->categoryList as $key => $item)
-            {
-                $catListHtml .= '<input type="checkbox" value="'.$item.'" name="category[]"'.
-                    ((empty($this->selCategoryList) || isset($this->selCategoryList[$item])) ? ' checked="checked" ' : '').
-                    ' id="scl_item_'.($key+1).'"/> <label for="scl_item_'.($key+1).'">'.$item.'</label><br />';
             }
             return '
             <div class="mw-scl">
