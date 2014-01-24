@@ -480,7 +480,7 @@ class SphinxSearchEngine extends SearchEngine
                 "`date_insert` BIGINT NOT NULL, ".
                 "`date_modify` BIGINT NOT NULL, ".
                 "INDEX(`query`)".
-            ") ENGINE=SPHINX CONNECTION='$conn'", __METHOD__);
+            ") ENGINE=SPHINX DEFAULT CHARSET=utf8 CONNECTION='$conn'", __METHOD__);
         }
         return true;
     }
