@@ -604,6 +604,16 @@ class SphinxSearchResultSet extends SearchResultSet
     {
         if ($this->categoryList)
         {
+            foreach ($this->categoryList as $i => $cat)
+            {
+                if (!Title::makeTitle(NS_CATEGORY, $cat)->userCan('read'))
+                {
+                    unset($this->categoryList[$i]);
+                }
+            }
+        }
+        if ($this->categoryList)
+        {
             global $wgRequest, $wgTitle;
             $hidden = '';
             foreach ($wgRequest->getValues() as $k => $v)
