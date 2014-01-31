@@ -71,6 +71,14 @@ class SphinxSearchEngine extends SearchEngine
         return false;
     }
 
+    static function setupEngine($special, $profile, $search)
+    {
+        global $wgRequest;
+        $special->setExtraParam('category', $wgRequest->getArray('category'));
+        $special->setExtraParam('orderBy', $wgRequest->getVal('orderBy'));
+        return true;
+    }
+
     // Main search function
     function searchText($term)
     {

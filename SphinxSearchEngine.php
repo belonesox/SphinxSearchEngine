@@ -65,6 +65,7 @@ $wgAutoloadClasses += array(
 $wgAutoloadLocalClasses['SearchUpdate'] = "$dir/SphinxSearchUpdate.php";
 $wgHooks['LoadExtensionSchemaUpdates'][] = 'SphinxSearchEngine::LoadExtensionSchemaUpdates';
 $wgHooks['ArticleDelete'][] = 'SphinxSearchEngine::ArticleDelete';
+$wgHooks['SpecialSearchSetupEngine'][] = 'SphinxSearchEngine::SetupEngine';
 $wgSearchType = 'SphinxSearchEngine';
 
 $wgResourceModules['ext.SphinxSearchEngine'] = array(
