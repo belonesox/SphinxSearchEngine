@@ -133,6 +133,7 @@ class SphinxSearchEngine extends SearchEngine
         }
 
         $dbRows = array();
+        $total = NULL;
         if ($wgSphinxSE_port || $sphinxRows)
         {
             $query = array(
@@ -144,7 +145,7 @@ class SphinxSearchEngine extends SearchEngine
                     'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
                     'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
                 ),
-                'options' => array('GROUP BY' => 'page_id'),
+                'options' => array('GROUP BY' => 'page_id', 'SQL_CALC_FOUND_ROWS'),
             );
             $maxScore = $this->getMaxScore($term);
             if ($wgSphinxSE_port)
@@ -189,12 +190,13 @@ class SphinxSearchEngine extends SearchEngine
                 {
                     $dbRows[] = $row;
                 }
+                $total = $this->db->selectField(NULL, 'FOUND_ROWS()', NULL);
             }
             else
             {
                 foreach ($res as $row)
                 {
-                    $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : null;
+                    $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : NULL;
                     $dbRows[$sortkey[$row->page_id]] = $row;
                 }
             }
@@ -204,7 +206,7 @@ class SphinxSearchEngine extends SearchEngine
         $res = new SphinxSearchResultSet(
             $this->db, $this->sphinx, $term, $this->offset, $this->limit,
             $this->namespaces, $dbRows, $this->index, $this->isFormRequest,
-            $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort
+            $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort, $total
         );
         return $res;
     }
@@ -512,7 +514,8 @@ class SphinxSearchResultSet extends SearchResultSet
     var $selCategoryList = array();
 
     function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $dbRows, $index,
-        $isFormRequest = false, $categoryList = array(), $selCategoryList = array(), $orderBy = null, $orderSort = null)
+        $isFormRequest = false, $categoryList = array(), $selCategoryList = array(),
+        $orderBy = NULL, $orderSort = NULL, $total = NULL)
     {
         $this->sphinx = $sphinx;
         $this->meta = $sphinx->select('SHOW META', 0);
@@ -520,6 +523,11 @@ class SphinxSearchResultSet extends SearchResultSet
         {
             $m = $m[1];
         }
+        if ($total !== NULL)
+        {
+            $this->meta['total'] = $total;
+        }
+
         $this->index = $index;
         $this->limit = $limit;
         $this->offset = $offset;
@@ -675,7 +683,7 @@ class SphinxSearchResultSet extends SearchResultSet
 
         $html = $wgOut->parse(sprintf(
             wfMsgNoTrans('sphinxSearchPreamble'),
-            $this->offset+1, $this->offset+$this->numRows(),
+            min($this->offset+1, $this->meta['total']), min($this->offset+$this->numRows(), $this->meta['total']),
             $this->meta['total'], $this->term, $this->meta['time']
         ), false);
 
