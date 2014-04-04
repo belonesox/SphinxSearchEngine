@@ -419,7 +419,7 @@ class SphinxSearchEngine extends SearchEngine
         $lastid = 0;
         while (1)
         {
-            $ids = $this->sphinx->select('SELECT id FROM '.$this->index.' WHERE id > '.$lastid.' ORDER BY id');
+            $ids = $this->sphinx->select('SELECT id FROM '.$this->index.' WHERE id > '.$lastid.' LIMIT 100000');
             if (!$ids)
             {
                 break;
@@ -437,7 +437,7 @@ class SphinxSearchEngine extends SearchEngine
             }
             if ($deleted)
             {
-                $this->sphinx->query('DELETE FROM '.$this->index.' WHERE id IN ('.implode(',', $deleted).')');
+                $this->sphinx->query('DELETE FROM '.$this->index.' WHERE id IN ('.implode(',', array_keys($deleted)).')');
             }
         }
     }
@@ -914,9 +914,13 @@ class SphinxQLClient
         if ($this->dbh->errno == 2006)
         {
             // "MySQL server has gone away" - this query crashed Sphinx.
-            // Reconnect on next query.
-            // FIXME: This may be also caused by timeout, in this case redo the query...
-            $this->crashed = true;
+            // Retry it 1 time.
+            $res = $this->dbh->query($query);
+            if ($this->dbh->errno == 2006)
+            {
+                // Sphinx crashed again, reconnect on next query.
+                $this->crashed = true;
+            }
         }
         return $res;
     }
