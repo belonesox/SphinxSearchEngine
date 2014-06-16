@@ -13,8 +13,8 @@ class SphinxSearchEngine extends SearchEngine
     var $isFormRequest = false;
 
     // Search order
-    var $orderBy = '';
-    var $orderSort = '';
+    var $orderBy = 'weight';
+    var $orderSort = 'desc';
     static $allowOrderByFields = array('weight' => true, 'date_insert' => true, 'date_modify' => true);
 
     // Category list
@@ -48,15 +48,15 @@ class SphinxSearchEngine extends SearchEngine
             $this->selCategoryList = $wgRequest->getArray('category');
 
             // Get sort order from request
-            $this->orderBy = $wgRequest->getVal('orderBy');
-            if (!isset(self::$allowOrderByFields[$this->orderBy]))
+            $order = $wgRequest->getVal('orderBy');
+            if (isset(self::$allowOrderByFields[$order]))
             {
-                $this->orderBy = 'weight';
+                $this->orderBy = $order;
             }
-            $this->orderSort = strtolower($wgRequest->getVal('sort'));
-            if ($this->orderSort !== 'asc' && $this->orderSort !== 'desc')
+            $sort = strtolower($wgRequest->getVal('sort'));
+            if ($sort === 'asc' || $sort === 'desc')
             {
-                $this->orderSort = 'desc';
+                $this->orderSort = $sort;
             }
         }
     }
@@ -130,6 +130,12 @@ class SphinxSearchEngine extends SearchEngine
                 $wgOut->addWikiText("Query failed: " . $this->sphinx->error() . "\n");
                 return NULL;
             }
+            // Fetch statistics using SphinxQL
+            $meta = $this->sphinx->select('SHOW META', 0);
+            foreach ($meta as &$m)
+            {
+                $m = $m[1];
+            }
         }
 
         $dbRows = array();
@@ -191,6 +197,25 @@ class SphinxSearchEngine extends SearchEngine
                     $dbRows[] = $row;
                 }
                 $total = $this->db->selectField(NULL, 'FOUND_ROWS()', NULL);
+                // Fetch statistics using SphinxSE
+                $res = $this->db->query('SHOW STATUS LIKE \'sphinx_%\'');
+                $meta = array();
+                $k = 0;
+                foreach ($res as $row)
+                {
+                    if ($row->Variable_name == 'Sphinx_words')
+                    {
+                        foreach (explode(' ', $row->Value) as $p)
+                        {
+                            list($meta["keyword[$k]"], $meta["docs[$k]"], $meta["hits[$k]"]) = explode(':', $p, 3);
+                            $k++;
+                        }
+                    }
+                    else
+                    {
+                        $meta[substr($row->Variable_name, 7)] = $row->Value;
+                    }
+                }
             }
             else
             {
@@ -204,8 +229,8 @@ class SphinxSearchEngine extends SearchEngine
             $this->buildExcerpts($dbRows, $this->index, $term);
         }
         $res = new SphinxSearchResultSet(
-            $this->db, $this->sphinx, $term, $this->offset, $this->limit,
-            $this->namespaces, $dbRows, $this->index, $this->isFormRequest,
+            $this->db, $term, $this->offset, $this->limit,
+            $this->namespaces, $dbRows, $meta, $this->index, $this->isFormRequest,
             $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort, $total
         );
         return $res;
@@ -513,16 +538,11 @@ class SphinxSearchResultSet extends SearchResultSet
     var $categoryList = array();
     var $selCategoryList = array();
 
-    function __construct($db, $sphinx, $term, $offset, $limit, $namespaces, $dbRows, $index,
+    function __construct($db, $term, $offset, $limit, $namespaces, $dbRows, $meta, $index,
         $isFormRequest = false, $categoryList = array(), $selCategoryList = array(),
         $orderBy = NULL, $orderSort = NULL, $total = NULL)
     {
-        $this->sphinx = $sphinx;
-        $this->meta = $sphinx->select('SHOW META', 0);
-        foreach ($this->meta as &$m)
-        {
-            $m = $m[1];
-        }
+        $this->meta = $meta;
         if ($total !== NULL)
         {
             $this->meta['total'] = $total;
@@ -829,6 +849,7 @@ class SphinxQLClient
      */
     function __construct($host)
     {
+        // We'll connect lazily
         $this->host = $host;
         $this->crashed = true;
     }
@@ -874,6 +895,11 @@ class SphinxQLClient
     {
         if (is_int($v))
             return $v;
+        if ($this->crashed)
+        {
+            // Reconnect after a crash
+            $this->connect();
+        }
         return "'".$this->dbh->real_escape_string($v)."'";
     }
 
@@ -913,11 +939,13 @@ class SphinxQLClient
         $res = $this->dbh->query($query);
         if ($this->dbh->errno == 2006)
         {
+            wfDebug("Sphinx crashed on query $query, retrying\n");
             // "MySQL server has gone away" - this query crashed Sphinx.
             // Retry it 1 time.
             $res = $this->dbh->query($query);
             if ($this->dbh->errno == 2006)
             {
+                wfDebug("Sphinx crashed on query $query again, skipping query\n");
                 // Sphinx crashed again, reconnect on next query.
                 $this->crashed = true;
             }
