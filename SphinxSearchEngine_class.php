@@ -156,6 +156,7 @@ class SphinxSearchEngine extends SearchEngine
             $maxScore = $this->getMaxScore($term);
             if ($wgSphinxSE_port)
             {
+                $startTime = microtime(true);
                 $seQuery = '';
                 if ($wgSphinxQL_weights)
                 {
@@ -216,6 +217,7 @@ class SphinxSearchEngine extends SearchEngine
                         $meta[substr($row->Variable_name, 7)] = $row->Value;
                     }
                 }
+                $meta['time'] = microtime(true)-$startTime;
             }
             else
             {
@@ -301,7 +303,10 @@ class SphinxSearchEngine extends SearchEngine
      */
     function getCategoryList($term)
     {
-        $rows = $this->sphinx->select('SELECT id, category FROM '.$this->index.' WHERE MATCH(?) GROUP BY category', 'id', array($this->filter($term)));
+        $rows = $this->sphinx->select(
+            'SELECT id, category FROM '.$this->index.' WHERE MATCH(?) GROUP BY category LIMIT 1000',
+            'id', array($this->filter($term))
+        );
         foreach ($rows ?: array() as $row)
         {
             foreach (explode('|', $row['category']) as $c)
