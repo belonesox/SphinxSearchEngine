@@ -112,6 +112,7 @@ class SphinxSearchEngine extends SearchEngine
             }
             $query .= ' ORDER BY `'.$this->orderBy.'` '.$this->orderSort;
             $query .= ' LIMIT '.$this->offset.', '.$this->limit;
+            $query .= ' OPTION ranker=expr(\'sum(lcs*user_weight)/max_lcs*2000+bm25+1000*pow(max(1-(now()-(date_insert+date_modify)/2)/47304000, 0), 4)\')';
             if ($wgSphinxQL_weights)
             {
                 $ws = $wgSphinxQL_weights;
@@ -120,7 +121,7 @@ class SphinxSearchEngine extends SearchEngine
                     $w = "$k=".intval($w);
                 }
                 unset($w);
-                $query .= ' OPTION field_weights=('.implode(', ', $ws).')';
+                $query .= ', field_weights=('.implode(', ', $ws).')';
             }
             $sphinxRows = $this->sphinx->select($query, 'id', array($sTerm));
             if ($sphinxRows === NULL)
@@ -167,6 +168,7 @@ class SphinxSearchEngine extends SearchEngine
                     $seQuery = ';fieldweights='.substr($seQuery, 1);
                 }
                 $seQuery = str_replace(array(';', '='), array('\\\\;', '\\\\='), $sTerm).';mode=extended;limit=1000'.$seQuery;
+                $seQuery .= ';ranker=expr:sum(lcs*user_weight)/max_lcs*2000+bm25+1000*pow(max(1-(now()-(date_insert+date_modify)/2)/47304000, 0), 4)';
                 $query['tables'][] = 'sphinx_page';
                 $query['fields'][] = 'sphinx_page.weight/'.$maxScore.' score';
                 $query['join_conds']['page'] = array('INNER JOIN', array('page_id=sphinx_page.id'));
@@ -204,7 +206,7 @@ class SphinxSearchEngine extends SearchEngine
                 $k = 0;
                 foreach ($res as $row)
                 {
-                    if ($row->Variable_name == 'Sphinx_words')
+                    if ($row->Variable_name == 'Sphinx_words' && $row->Value)
                     {
                         foreach (explode(' ', $row->Value) as $p)
                         {
