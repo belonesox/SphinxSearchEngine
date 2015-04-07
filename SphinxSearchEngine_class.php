@@ -364,8 +364,8 @@ class SphinxSearchEngine extends SearchEngine
         $cat_search = implode('|', self::categoryForSearch($cat));
         $cat = str_replace('_', ' ', implode('|', $cat));
         $date_insert = $dbr->selectRow('revision', 'MIN(rev_timestamp) min_ts, MAX(rev_timestamp) max_ts', array('rev_page' => $id), __METHOD__);
-        $date_modify = $date_insert->max_ts;
-        $date_insert = $date_insert->min_ts;
+        $date_modify = wfTimestamp(TS_UNIX, $date_insert->max_ts);
+        $date_insert = wfTimestamp(TS_UNIX, $date_insert->min_ts);
         if (!$this->sphinx->query('REPLACE INTO '.$this->index.
                 ' (id, namespace, title, text, category, category_search, date_insert, date_modify) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 array($id, $title->getNamespace(), $title->getText(), $text, $cat, $cat_search, $date_insert, $date_modify)
@@ -413,6 +413,8 @@ class SphinxSearchEngine extends SearchEngine
             $row->page_title = str_replace('_', ' ', $row->page_title);
             $row->category_search = implode('|', self::categoryForSearch(explode('|', $row->category)));
             $row->category = str_replace('_', ' ', $row->category);
+            $row->date_insert = wfTimestamp(TS_UNIX, $row->date_insert);
+            $row->date_modify = wfTimestamp(TS_UNIX, $row->date_modify);
             // Trigger SearchUpdate and allow extensions to change indexed text
             wfRunHooks('SearchUpdate', array($row->page_id, $row->page_namespace, $row->page_title, &$row->old_text));
             foreach (array('page_id', 'page_namespace', 'page_title', 'old_text', 'category', 'category_search', 'date_insert', 'date_modify') as $key)

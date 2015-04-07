@@ -36,8 +36,8 @@ $messages['en'] = array(
     'searchSortTitle'               => 'Sort by:',
     'searchSortButton'              => 'Sort',
     'searchSortOrder_weight'        => 'Relevance',
-    'searchSortOrder_date_insert'   => 'Date insert',
-    'searchSortOrder_date_modify'   => 'Date modify',
+    'searchSortOrder_date_insert'   => 'Creation time',
+    'searchSortOrder_date_modify'   => 'Modification time',
     'searchSort_desc'               => 'Desc.',
     'searchSort_asc'                => 'Asc.',
 );
@@ -77,5 +77,4 @@ $messages['ru'] = array(
     'searchSortOrder_date_modify'   => 'Дате изменения',
     'searchSort_desc'               => 'Убыв.',
     'searchSort_asc'                => 'Возр.',
-
 );
