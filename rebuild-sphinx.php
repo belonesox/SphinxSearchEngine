@@ -14,3 +14,4 @@ require_once "$dir/../../maintenance/commandLine.inc";
 $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
 $eng->purge_deleted();
 $eng->build_index();
+$eng->sphinx->query('OPTIMIZE INDEX '.$eng->index);
