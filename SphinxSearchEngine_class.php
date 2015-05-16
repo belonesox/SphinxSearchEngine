@@ -259,12 +259,14 @@ class SphinxSearchEngine extends SearchEngine
             $excerpts = $this->sphinx->select($snip_query, NULL, array($row->old_text, $index, $term));
             if (!$excerpts)
             {
-                $excerpts = array("ERROR: " . $this->sphinx->error());
+                $excerpts = array("ERROR: " . $this->sphinx->error(false));
             }
             foreach ($excerpts as &$entry)
             {
                 // add excerpt to output, escape HTML
-                $entry = htmlspecialchars($entry[0]);
+                if (is_array($entry))
+                    $entry = $entry[0];
+                $entry = htmlspecialchars($entry);
                 $entry = preg_replace("/\n\s*/", "<br />", str_replace(
                     array("\x01", "\x02"),
                     array($wgSphinxQL_ExcerptsOptions['before_match'], $wgSphinxQL_ExcerptsOptions['after_match']),
@@ -995,7 +997,7 @@ class SphinxQLClient
      * Return error text, if any
      * @return string or NULL
      */
-    function error()
+    function error($include_query = true)
     {
         if ($this->dbh && $this->dbh->errno)
         {
