@@ -381,7 +381,7 @@ class SphinxSearchEngine extends SearchEngine
     }
 
     // Deletes an index entry
-    function delete($id)
+    function delete($id, $title)
     {
         if (!$this->sphinx->query('DELETE FROM '.$this->index.' WHERE id=?', array($id)))
         {

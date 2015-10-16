@@ -36,7 +36,7 @@ class SearchUpdate implements DeferrableUpdate
 
     function doUpdate()
     {
-        global $wgContLang, $wgDisableSearchUpdate;
+        global $wgContLang, $wgDisableSearchUpdate, $wgVersion;
 
         if ($wgDisableSearchUpdate || !$this->mId)
             return false;
@@ -46,10 +46,12 @@ class SearchUpdate implements DeferrableUpdate
 
         if ($this->mText === false)
         {
-            $a = new Article($this->mTitle);
-            $this->mText = $a->getContent();
+            $a = new WikiPage($this->mTitle);
+            $this->mText = version_compare($wgVersion, '1.21', '>=') ? $a->getContent() : $a->getText();
         }
 
+        if ($this->mText instanceof Content)
+            $this->mText = $this->mText->getTextForSearchIndex();
         // Language-specific strip/conversion
         $text = $wgContLang->normalizeForSearch($this->mText);
 
