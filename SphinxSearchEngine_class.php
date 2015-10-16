@@ -237,6 +237,7 @@ class SphinxSearchEngine extends SearchEngine
             $this->namespaces, $dbRows, $meta, $this->index, $this->isFormRequest,
             $this->categoryList, $this->selCategoryList, $this->orderBy, $this->orderSort, $total
         );
+        Hooks::register('SpecialSearchResults', array($res, 'addInfo'));
         return $res;
     }
 
@@ -535,7 +536,7 @@ class SphinxSearchEngine extends SearchEngine
     static function ArticleDelete($article, &$user, &$reason, &$error)
     {
         $eng = new SphinxSearchEngine(wfGetDB(DB_MASTER));
-        $eng->delete($article->getId());
+        $eng->delete($article->getId(), $article->getTitle());
         return true;
     }
 }
@@ -706,10 +707,9 @@ class SphinxSearchResultSet extends SearchResultSet
         return '';
     }
 
-    function getInfo()
+    function addInfo($term, $titleMatches, $textMatches)
     {
         global $wgOut;
-
         $wgOut->addModules('ext.SphinxSearchEngine');
 
         $html = $wgOut->parse(sprintf(
@@ -735,7 +735,8 @@ class SphinxSearchResultSet extends SearchResultSet
             $html .= $this->getSortOrder();
         }
 
-        return "search words: --> $html <!-- /search words:";
+        $wgOut->addHTML("<!-- search words: --> $html <!-- /search words: -->");
+        return true;
     }
 
     function createNextPageBar($perpage, $page, $found)
@@ -809,7 +810,7 @@ class SphinxSearchResultSet extends SearchResultSet
         $item = NULL;
         if ($this->position < $this->numRows())
         {
-            $item = new SphinxSearchResult($this->dbRows[$this->position], $this->dbRows[$this->position]->excerpts, $this->dbRows[$this->position]->score);
+            $item = SphinxSearchResult::newFromRow($this->dbRows[$this->position]);
             $this->position++;
         }
         return $item;
@@ -826,11 +827,12 @@ class SphinxSearchResult extends SearchResult
 {
     var $score;
 
-    function __construct($dbRow, $snippet, $score)
+    static function newFromRow($dbRow)
     {
-        parent::__construct($dbRow);
-        $this->snippet = $snippet;
-        $this->score = $score;
+        $self = parent::newFromTitle(Title::newFromRow($dbRow));
+        $self->snippet = $dbRow->excerpts;
+        $self->score = $dbRow->score;
+        return $self;
     }
 
     // $terms is ignored
