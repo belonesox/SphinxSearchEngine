@@ -829,7 +829,8 @@ class SphinxSearchResult extends SearchResult
 
     static function newFromRow($dbRow)
     {
-        $self = parent::newFromTitle(Title::newFromRow($dbRow));
+        $self = new self();
+        $self->initFromTitle(Title::newFromRow($dbRow));
         $self->snippet = $dbRow->excerpts;
         $self->score = $dbRow->score;
         return $self;
