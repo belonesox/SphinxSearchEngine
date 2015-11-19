@@ -24,7 +24,7 @@ class SearchUpdate implements DeferrableUpdate
 
     function SearchUpdate($id, $title, $text = false)
     {
-        $this->mTitle = Title::newFromText($title);
+        $this->mTitle = $title instanceof Title ? $title : Title::newFromText($title);
         if ($this->mTitle)
         {
             $this->mId = $id;
