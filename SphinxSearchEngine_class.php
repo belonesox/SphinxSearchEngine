@@ -23,15 +23,13 @@ class SphinxSearchEngine extends SearchEngine
 
     function __construct($db)
     {
-        global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index;
+        global $wgSphinxQL_host, $wgSphinxQL_port, $wgSphinxQL_index, $wgSphinxSE_port;
         if ($db)
-        {
             $this->db = $db;
-        }
         else
-        {
             $this->db = wfGetDB(DB_SLAVE);
-        }
+        if ($this->db->getType() != 'mysql')
+            $wgSphinxSE_port = NULL;
         $this->sphinx = new SphinxQLClient($wgSphinxQL_host.':'.$wgSphinxQL_port);
         $this->index = $wgSphinxQL_index;
         $this->getSearchFormValues();
@@ -143,16 +141,17 @@ class SphinxSearchEngine extends SearchEngine
         $total = NULL;
         if ($wgSphinxSE_port || $sphinxRows)
         {
+            $group_cats = $this->db->getType() == 'postgres' ? 'array_to_string(array_agg(cl_to), \',\')' : 'GROUP_CONCAT(cl_to SEPARATOR \',\')';
             $query = array(
                 'tables' => array('page', 'revision', 'text', 'categorylinks'),
-                'fields' => array('page.*', 'old_text', 'GROUP_CONCAT(cl_to SEPARATOR \',\') category'),
+                'fields' => array('page.*', 'old_text', 'category' => $group_cats),
                 'conds' => array(),
                 'join_conds' => array(
                     'revision'      => array('INNER JOIN', array('rev_id=page_latest')),
                     'text'          => array('INNER JOIN', array('old_id=rev_text_id')),
                     'categorylinks' => array('LEFT JOIN', array('cl_from=page_id')),
                 ),
-                'options' => array('GROUP BY' => 'page_id', 'SQL_CALC_FOUND_ROWS'),
+                'options' => array('GROUP BY' => 'page_id, old_id', 'SQL_CALC_FOUND_ROWS'),
             );
             $maxScore = $this->getMaxScore($term);
             if ($wgSphinxSE_port)
