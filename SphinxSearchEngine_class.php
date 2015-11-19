@@ -744,7 +744,7 @@ class SphinxSearchResultSet extends SearchResultSet
         $params = $_GET;
         unset($params['title']);
         $max_page = ceil($found / $perpage);
-        if ($page > $max_page || $page != intval($page))
+        if ($max_page > 0 && $page > $max_page || $page < 0 || $page != intval($page))
         {
             $wgOut->redirect($wgTitle->getLocalUrl(array('offset' => ($max_page-1)*$perpage) + $params));
         }
