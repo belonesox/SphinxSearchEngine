@@ -22,7 +22,7 @@ class SearchUpdate implements DeferrableUpdate
 {
     var $mId, $mTitle, $mText;
 
-    function SearchUpdate($id, $title, $text = false)
+    function __construct($id, $title, $text = false)
     {
         $this->mTitle = $title instanceof Title ? $title : Title::newFromText($title);
         if ($this->mTitle)
