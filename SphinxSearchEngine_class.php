@@ -325,6 +325,7 @@ class SphinxSearchEngine extends SearchEngine
         }
         if (!empty($this->categoryList))
         {
+            ksort($this->categoryList);
             $this->categoryList = array_keys($this->categoryList);
         }
     }
