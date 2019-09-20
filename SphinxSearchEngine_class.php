@@ -227,6 +227,7 @@ class SphinxSearchEngine extends SearchEngine
                     $row->score = isset($sphinxRows[$row->page_id]['weight']) ? $sphinxRows[$row->page_id]['weight'] / $maxScore : NULL;
                     $dbRows[$sortkey[$row->page_id]] = $row;
                 }
+                ksort($dbRows);
                 $dbRows = array_values($dbRows);
             }
             // Build excerpts
