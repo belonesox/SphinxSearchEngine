@@ -692,6 +692,7 @@ class SphinxSearchResultSet extends SearchResultSet
                 }
             }
             return '
+            <style>.mw-search-results { max-width: 75%; }</style>
             <div class="mw-scl">
                 <form action="?" method="GET">'.
                 $hidden.
