@@ -19,9 +19,12 @@
 }
 
 .mw-scl {
-    float: right;
+    float: none;
+    width: 25%;
     right: 0px;
-    width: 22%;
+    position: absolute;
+    left: 102%;    
+    z-index: 10;
     background-color: #F3F3F3;
     border: 1px solid silver;
     margin-top: 2.5em;
